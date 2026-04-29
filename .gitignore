@@ -1,0 +1,87 @@
+# Byte-compiled / optimized / DLL files
+__pycache__/
+*.py[cod]
+*$py.class
+
+# C extensions
+*.so
+
+# Distribution / packaging
+.Python
+build/
+dist/
+*.egg-info/
+.eggs/
+
+# Installer logs
+pip-log.txt
+pip-delete-this-directory.txt
+
+# Unit test / coverage reports
+htmlcov/
+.tox/
+.nox/
+.coverage
+.coverage.*
+.cache
+.pytest_cache/
+
+# MyPy
+.mypy_cache/
+.dmypy.json
+
+# Ruff
+.ruff_cache/
+
+# Pyright
+.pyright/
+
+# Jupyter
+.ipynb_checkpoints/
+
+# Virtual environments
+.venv/
+venv/
+ENV/
+
+# IDEs / editors
+.vscode/
+.idea/
+*.swp
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+
+# Local configuration / secrets
+.env
+.env.*
+
+# Node (if used for docs/site tooling)
+node_modules/
+
+# Sphinx / MkDocs
+site/
+_docs/_build/
+docs/_build/
+
+# Data / audio artifacts (common for HRTF work)
+*.wav
+*.flac
+*.aiff
+*.mp3
+*.mat
+*.npz
+*.npy
+*.h5
+*.hdf5
+
+# Large model / binary artifacts
+*.pkl
+*.joblib
+
+# Notebooks exports
+*.nbconvert.*
