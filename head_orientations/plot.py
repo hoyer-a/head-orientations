@@ -4,7 +4,7 @@ from matplotlib.gridspec import GridSpec
 import numpy as np
 import pyfar as pf
 
-from head_orientation_class import HeadOrientations
+from .head_orientation_class import HeadOrientations
 from typing import Sequence
 
 

@@ -3,7 +3,7 @@ import sofar as sf
 import scipy as sc
 from importlib import import_module
 import tempfile
-from head_orientation_class import HeadOrientations
+from .head_orientation_class import HeadOrientations
 import os
 
 

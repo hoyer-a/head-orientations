@@ -1,8 +1,7 @@
 import pyfar as pf
 import spharpy
 import numpy as np
-import matplotlib.pyplot as plt
-from head_orientation_class import HeadOrientations
+from .head_orientation_class import HeadOrientations
 from scipy.interpolate import LinearNDInterpolator
 
 
@@ -80,7 +79,6 @@ def interpolate(head_orientations: HeadOrientations,
     for n, head_orientation in enumerate(head_orientations):
         hrir = hrirs[n, ...]
         hrir.time = hrir.time.squeeze()
-        ax = pf.plot.time_freq(hrir[0, 0], label='original')
         # time align
         hrir_onset = pf.dsp.resample(hrir, hrir.sampling_rate * 10,
                                      post_filter=True)

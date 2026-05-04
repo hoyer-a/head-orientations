@@ -2,8 +2,8 @@
 import pyfar as pf
 import numpy as np
 
-from head_orientation_class import HeadOrientations
-from _spherical_head import spherical_head
+from .head_orientation_class import HeadOrientations
+from ._spherical_head import spherical_head
 
 
 def far_field_correction(head_orientations: HeadOrientations,
