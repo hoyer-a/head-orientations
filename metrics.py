@@ -1,6 +1,10 @@
 import pyfar as pf
+import sofar as sf
+import scipy as sc
 from importlib import import_module
+import tempfile
 from head_orientation_class import HeadOrientations
+import os
 
 
 _MATLAB_ENGINE = None
@@ -70,10 +74,30 @@ def barumerli_localization(
     results = []
 
     for head_orientation in template_head_orientations:
-        # exctract template features for current ho
-        sofa_template = \
-            eng.SOFAload(str(template_head_orientations.sofa_file_paths[0]),
-                         nargout=1)
+        # If the template has beed interpolated before, there is no
+        # corresponding sofa file, so we create a temporary one
+        if head_orientation.sofa_file_paths is None:
+            print("creating tempdir for head template")
+            sofa = sf.Sofa("SimpleFreeFieldHRIR")
+            sofa.SourcePosition = head_orientation.source_positions.spherical_elevation
+
+            sofa.Data_IR = head_orientation.hrirs.time[0]
+            sofa.Data_SamplingRate = head_orientation.hrirs.sampling_rate
+
+            with tempfile.TemporaryDirectory() as tmpdir:
+                file_path = f"{tmpdir}/example.sofa"
+
+                # Save the SOFA file
+                sf.write_sofa(file_path, sofa)
+
+                # You can read it back if needed
+                sofa_template = eng.SOFAload(file_path, nargout=1)
+
+        else:
+            # exctract template features for current ho
+            sofa_template = \
+                eng.SOFAload(str(template_head_orientations.sofa_file_paths[0]),
+                            nargout=1)
 
         sofa_template = _get_subset(sofa_template, subsampling)
 
@@ -90,6 +114,16 @@ def barumerli_localization(
 
         metrics = eng.barumerli2023_metrics(prediction_matrix,
                                             'middle_metrics')
+
+        if output_dir:
+            orientation = head_orientation.head_orientations
+            filename = f"metrics_bend_{int(orientation[:, 0])}" \
+                f"elev_{int(orientation[:, 1])}" \
+                    f"azim{int(orientation[:, 2])}.mat"
+            filepath = os.path.join(output_dir, filename)
+            sc.io.savemat(filepath, metrics)
+            print(f"saved to {filepath}")
+
         results.append(metrics)
 
     return results, template_head_orientations.head_orientations

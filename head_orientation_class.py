@@ -333,7 +333,7 @@ class HeadOrientations:
         Orientation values with shape ``(n_orientations, 3)`` and columns
         ``[bend, elevation, azimuth]``.
     """
-    def __init__(self, hrirs, source_positions, head_orientations, fp):
+    def __init__(self, hrirs, source_positions, head_orientations, fp=None):
         self._hrirs = hrirs
         self._coordinates = source_positions
         self._head_orientations = head_orientations
@@ -356,11 +356,13 @@ class HeadOrientations:
         """
         orientations = np.asarray(self._head_orientations)
         for idx in range(self.n_orientations):
+            sofa_fp = None if self.sofa_file_paths is None \
+                else self.sofa_file_paths[idx:idx + 1]
             yield HeadOrientations(
                 self._hrirs[idx:idx + 1, :],
                 self._coordinates,
                 orientations[idx:idx + 1],
-                self.sofa_file_paths[idx:idx + 1]
+                sofa_fp
             )
 
     # PROPERTIES
