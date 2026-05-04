@@ -1,0 +1,89 @@
+[build-system]
+requires = ["setuptools>=61.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "head_orientations"
+version = "0.1.0"
+description = "Utilities for working with head-related impulse responses (HRIRs) across multiple head orientations and spatial positions."
+readme = "README.md"
+requires-python = ">=3.11"
+license = { file = "LICENSE" }
+authors = [
+    { name = "HATO Contributors" }
+]
+keywords = [
+    "audio",
+    "acoustics",
+    "HRIR",
+    "head-related transfer function",
+    "spatial audio",
+    "binaural",
+]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Intended Audience :: Science/Research",
+    "License :: OSI Approved :: MIT License",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Topic :: Multimedia :: Sound/Audio",
+    "Topic :: Scientific/Engineering :: Physics",
+]
+
+dependencies = [
+    "numpy>=2.3.5",
+    "scipy>=1.17.1",
+    "pyfar>=0.8.0",
+    "spharpy>=1.0.0",
+    "sofar>=1.2.2",
+    "matplotlib>=3.10.8",
+]
+
+[project.optional-dependencies]
+matlab = [
+    "matlabengine>=23.2",
+]
+dev = [
+    "pytest>=7.0",
+    "pytest-cov>=3.0",
+    "black>=22.0",
+    "flake8>=4.0",
+    "sphinx>=4.5",
+    "sphinx-rtd-theme>=1.0",
+]
+
+[project.urls]
+Homepage = "https://github.com/HATO/head_orientations"
+Documentation = "https://head-orientations.readthedocs.io"
+Repository = "https://github.com/HATO/head_orientations.git"
+Issues = "https://github.com/HATO/head_orientations/issues"
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["head_orientations*"]
+
+[tool.setuptools.package-data]
+head_orientations = ["py.typed"]
+
+[tool.black]
+line-length = 100
+target-version = ["py311", "py312"]
+
+[tool.isort]
+profile = "black"
+line_length = 100
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "--cov=head_orientations --cov-report=html --cov-report=term"
+
+[tool.coverage.run]
+source = ["head_orientations"]
+omit = ["*/tests/*", "*/test_*.py"]
+
+[tool.mypy]
+python_version = "3.11"
+warn_return_any = true
+warn_unused_configs = true
+disallow_untyped_defs = false
