@@ -1,14 +1,16 @@
 import pyfar as pf
 import spharpy
 import numpy as np
+import matplotlib.pyplot as plt
 from head_orientation_class import HeadOrientations
-from scipy.interpolate import make_interp_spline, LinearNDInterpolator
+from scipy.interpolate import LinearNDInterpolator
 
 
-def interpolate_to_global_coords(head_orientations: HeadOrientations,
-                                 target_coordinates: pf.Coordinates,
-                                 n_max: int,
-                                 grid: str = "lebedev"):
+def interpolate(head_orientations: HeadOrientations,
+                target_coordinates: pf.Coordinates,
+                n_max: int,
+                grid: str = "lebedev",
+                rotate: bool = True,):
     """
     Interpolate HRIRs in a global (torso-centered) coordinate system.
 
@@ -30,6 +32,9 @@ def interpolate_to_global_coords(head_orientations: HeadOrientations,
         - ``"lebedev"`` (default): map source positions to a 44-point
           Lebedev grid at the source radius.
         - ``None``: use the original source positions directly.
+    rotate : bool, optional
+        Applies the inverse head rotation to the SH-signal to rotate from
+        head-centered to torso centered coordinates. Default is ``True``.
 
     Returns
     -------
@@ -38,7 +43,6 @@ def interpolate_to_global_coords(head_orientations: HeadOrientations,
         `target_coordinates` and the original head-orientation metadata.
     """
     source = head_orientations.source_positions
-
     # Get grid for SH-transform
     radius = source.radius
     if grid == "lebedev":
@@ -51,10 +55,18 @@ def interpolate_to_global_coords(head_orientations: HeadOrientations,
     else:
         raise ValueError("grid must be lebedev or None")
 
+    # check radii of source and target sampling
+    if not np.isclose(radius[0], target_coordinates.radius[0]):
+        raise ValueError("Source and target samplings must have same radius.")
+
     # Get SamplingSphere for source and target coordinates
     sampling = spharpy.SamplingSphere.from_coordinates(source)
-    target_sampling = \
-        spharpy.SamplingSphere.from_coordinates(target_coordinates)
+
+    if type(target_coordinates) == spharpy.SamplingSphere:
+        target_sampling = target_coordinates
+    else:
+        target_sampling = \
+            spharpy.SamplingSphere.from_coordinates(target_coordinates)
 
     # Get basis matrix
     sh_definition = spharpy.SphericalHarmonicDefinition(n_max)
@@ -62,24 +74,30 @@ def interpolate_to_global_coords(head_orientations: HeadOrientations,
         spharpy.SphericalHarmonics.from_definition(sh_definition,
                                                    sampling,
                                                    inverse_method='pseudo_inverse')
-    hrirs = head_orientations.hrirs
-    # copy hrirs
-    hrirs = hrirs[:, *idx].copy()
-
-    # time align
-    hrirs_onset = pf.dsp.resample(hrirs, hrirs.sampling_rate * 10,
-                                  post_filter=True)
-    hrirs_onset = pf.dsp.filter.butterworth(hrirs_onset, 10, 3e3)
-    onsets = pf.dsp.find_impulse_response_start(hrirs_onset) / 10
-    hrirs = pf.dsp.fractional_time_shift(hrirs, -onsets, mode='cyclic')
-
-    toa_interpolator = LinearNDInterpolator(source.cartesian, onsets)
-    target_onsets = toa_interpolator(target_coordinates.cartesian)
+    hrirs = head_orientations.hrirs[:, *idx].copy()
 
     # Iterate over head orientations: sh-transform, rotate & interpolate
     for n, head_orientation in enumerate(head_orientations):
         hrir = hrirs[n, ...]
         hrir.time = hrir.time.squeeze()
+        ax = pf.plot.time_freq(hrir[0, 0], label='original')
+        # time align
+        print("hrirs: \n", hrir)
+        hrir_onset = pf.dsp.resample(hrir, hrir.sampling_rate * 10,
+                                     post_filter=True)
+        onsets = pf.dsp.find_impulse_response_start(hrir_onset) / 10
+        print(f"onsets: {onsets.shape}")
+        print(f"target coords: {target_coordinates.cartesian.shape}")
+        hrir = pf.dsp.fractional_time_shift(hrir, -onsets, mode='cyclic')
+
+        toa_interpolator = LinearNDInterpolator(target_coordinates.cartesian,
+                                                onsets)
+
+        pf.plot.time_freq(hrir[0, 0], label='shifted')
+        plt.legend()
+        plt.show()
+
+        target_onsets = toa_interpolator(target_coordinates.cartesian)
         orientation = head_orientation.head_orientations
         hrir_nm = (y_nm.basis_inv @ hrir).T
 
@@ -88,11 +106,15 @@ def interpolate_to_global_coords(head_orientations: HeadOrientations,
 
         orientation = -np.deg2rad(orientation).squeeze()
 
-        Rotation = \
-            spharpy.transforms.SphericalHarmonicRotation.from_euler(
-                'XYZ', [orientation[0], orientation[1], orientation[2]])
+        if rotate:
+            Rotation = \
+                spharpy.transforms.SphericalHarmonicRotation.from_euler(
+                    'XYZ', [orientation[0], orientation[1], orientation[2]])
 
-        rotated_nm = Rotation.apply(hrir_nm)
+            rotated_nm = Rotation.apply(hrir_nm)
+        else:
+            rotated_nm = hrir_nm
+
         target_nm = \
             spharpy.SphericalHarmonics.from_definition(sh_definition,
                                                        target_sampling,
@@ -114,7 +136,7 @@ def interpolate_to_global_coords(head_orientations: HeadOrientations,
                                                mode='cyclic')
 
     return HeadOrientations(output_hrir, target_coordinates,
-                            head_orientations.head_orientations)
+                            head_orientations.head_orientations, None)
 
 
 def interpolate_head_orientation(head_orientation_1: HeadOrientations,
@@ -176,7 +198,7 @@ def interpolate_head_orientation(head_orientation_1: HeadOrientations,
     hrirs_interpolated = pf.Signal(hrirs_interpolated[None, :],
                                    hrirs1.sampling_rate)
 
-    return HeadOrientations(hrirs_interpolated, target_source, ho_interp)
+    return HeadOrientations(hrirs_interpolated, target_source, ho_interp, None)
 
 
 
