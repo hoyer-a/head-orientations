@@ -82,20 +82,13 @@ def interpolate(head_orientations: HeadOrientations,
         hrir.time = hrir.time.squeeze()
         ax = pf.plot.time_freq(hrir[0, 0], label='original')
         # time align
-        print("hrirs: \n", hrir)
         hrir_onset = pf.dsp.resample(hrir, hrir.sampling_rate * 10,
                                      post_filter=True)
         onsets = pf.dsp.find_impulse_response_start(hrir_onset) / 10
-        print(f"onsets: {onsets.shape}")
-        print(f"target coords: {target_coordinates.cartesian.shape}")
         hrir = pf.dsp.fractional_time_shift(hrir, -onsets, mode='cyclic')
 
         toa_interpolator = LinearNDInterpolator(target_coordinates.cartesian,
                                                 onsets)
-
-        pf.plot.time_freq(hrir[0, 0], label='shifted')
-        plt.legend()
-        plt.show()
 
         target_onsets = toa_interpolator(target_coordinates.cartesian)
         orientation = head_orientation.head_orientations
