@@ -48,7 +48,7 @@ def barumerli_localization(
     target_head_orientations: HeadOrientations,
     subsampling: pf.Coordinates = None,
     output_dir: str = None,
-    repetitions: int = 100,
+    repetitions: int = 200,
     save_matrix: bool = False,
 ):
     """"""
