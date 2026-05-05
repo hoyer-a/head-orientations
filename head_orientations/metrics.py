@@ -5,10 +5,179 @@ from importlib import import_module
 import tempfile
 from .head_orientation_class import HeadOrientations
 import os
+import re
+import numpy as np
 
 
 _MATLAB_ENGINE = None
 
+class HeadOrientationsMetrics:
+    """Container for Barumerli localization metrics saved as .mat files.
+
+    Scans a directory for files named like
+    ``metrics_bend_<bend>elev_<elev>azim<azim>.mat`` and loads the
+    stored metrics (e.g. ``rmsL``, ``rmsP``, ``querr``) per orientation.
+
+    Parameters
+    ----------
+    base_dir : str or path-like
+        Directory to scan for metric .mat files.
+    """
+
+    _pattern = re.compile(
+        r"metrics_bend_(?P<bend>-?\d+(?:\.\d+)?)"
+        r"elev_(?P<elev>-?\d+(?:\.\d+)?)"
+        r"azim(?P<azim>-?\d+(?:\.\d+)?)\.mat$"
+    )
+
+    def __init__(self, base_dir):
+        self._base_dir = base_dir
+        self._filepaths = []
+        self._head_orientations = []
+        self._metrics = []
+
+        self._find_files(base_dir)
+
+    def __repr__(self):
+        return f"HeadOrientationsMetrics with {self.n_orientations} entries"
+
+    @property
+    def head_orientations(self):
+        return np.asarray(self._head_orientations, dtype=float)
+
+    @property
+    def mat_files(self):
+        return np.asarray(self._filepaths)
+
+    @property
+    def n_orientations(self):
+        return len(self._filepaths)
+
+    def get_metrics(self, bend=None, elevation=None, azimuth=None, tol=1e-9,
+                    return_indices=False):
+        """Return metrics matching a query (similar semantics to
+        HeadOrientationsDataset.find_head_orientations).
+        """
+        indices = self._find_orientation(bend=bend, elevation=elevation,
+                                         azimuth=azimuth, tol=tol)
+        if return_indices:
+            return indices
+        return [self._metrics[i] for i in indices]
+
+    def _find_files(self, base_dir):
+        """Scan the base directory (recursively) and load .mat metric files."""
+        for root, _, files in os.walk(base_dir):
+            for fname in files:
+                match = self._pattern.search(fname)
+                if not match:
+                    continue
+
+                filepath = os.path.join(root, fname)
+                b = float(match.group("bend"))
+                e = float(match.group("elev"))
+                a = float(match.group("azim"))
+
+                self._filepaths.append(filepath)
+                self._head_orientations.append([b, e, a])
+
+                try:
+                    mat = sc.io.loadmat(filepath, squeeze_me=True, struct_as_record=False)
+                except Exception:
+                    mat = None
+
+                metrics = {
+                    "rmsL": None,
+                    "rmsP": None,
+                    "querr": None,
+                    "raw": mat,
+                }
+
+                if mat is not None:
+                    for key in ("rmsL", "rmsP", "querr"):
+                        val = self._find_in_mat(mat, key)
+                        if val is not None:
+                            metrics[key] = np.asarray(val)
+
+                self._metrics.append(metrics)
+
+    def _find_in_mat(self, obj, key):
+        """Recursively search a loaded .mat structure for a field named ``key``.
+
+        Returns the first match or ``None`` if not found.
+        """
+        if obj is None:
+            return None
+
+        if isinstance(obj, dict):
+            if key in obj:
+                return obj[key]
+            for v in obj.values():
+                res = self._find_in_mat(v, key)
+                if res is not None:
+                    return res
+            return None
+
+        if isinstance(obj, np.ndarray):
+            # iterate elements (handles struct arrays / object arrays)
+            for el in obj.ravel():
+                res = self._find_in_mat(el, key)
+                if res is not None:
+                    return res
+            return None
+
+        return None
+
+    def _find_orientation(self, bend=None, elevation=None, azimuth=None,
+                          tol=1e-9):
+        if len(self._head_orientations) == 0:
+            return np.array([], dtype=int)
+
+        orientations = np.asarray(self._head_orientations, dtype=float)
+
+        bend_query = self._normalize_query_values(bend)
+        elev_query = self._normalize_query_values(elevation)
+        azim_query = self._normalize_query_values(azimuth)
+
+        is_triplet_query = (
+            bend_query is not None
+            and elev_query is not None
+            and azim_query is not None
+            and bend_query.size > 1
+            and elev_query.size > 1
+            and azim_query.size > 1
+        )
+
+        if is_triplet_query:
+            if not (bend_query.size == elev_query.size == azim_query.size):
+                raise ValueError("For triplet-list queries, bend/elevation/azimuth must have the same length.")
+            query_orientations = np.column_stack((bend_query, elev_query, azim_query))
+            comparison = np.isclose(orientations[:, None, :], query_orientations[None, :, :], atol=tol, rtol=0.0)
+            mask = np.any(np.all(comparison, axis=2), axis=1)
+            return np.flatnonzero(mask)
+
+        mask = np.ones(orientations.shape[0], dtype=bool)
+        mask &= self._axis_mask(orientations[:, 0], bend_query, tol)
+        mask &= self._axis_mask(orientations[:, 1], elev_query, tol)
+        mask &= self._axis_mask(orientations[:, 2], azim_query, tol)
+
+        return np.flatnonzero(mask)
+
+    @staticmethod
+    def _normalize_query_values(values):
+        if values is None:
+            return None
+        if np.isscalar(values):
+            return np.asarray([values], dtype=float)
+        arr = np.asarray(values, dtype=float).reshape(-1)
+        if arr.size == 0:
+            return None
+        return arr
+
+    @staticmethod
+    def _axis_mask(orientation_values, query_values, tol):
+        if query_values is None:
+            return np.ones(orientation_values.shape[0], dtype=bool)
+        return np.any(np.isclose(orientation_values[:, None], query_values[None, :], atol=tol, rtol=0.0), axis=1)
 
 def _get_matlab_engine():
     global _MATLAB_ENGINE
@@ -26,6 +195,28 @@ def _get_matlab_engine():
         _MATLAB_ENGINE.SOFAstart(nargout=0)
 
     return _MATLAB_ENGINE
+
+def _load_tmp_sofa(head_orientation):
+    """"""
+    print("creating tempdir for sofa file")
+
+    eng = _get_matlab_engine()
+
+    sofa = sf.Sofa("SimpleFreeFieldHRIR")
+    sofa.SourcePosition = head_orientation.source_positions.spherical_elevation
+
+    sofa.Data_IR = head_orientation.hrirs.time[0]
+    sofa.Data_SamplingRate = head_orientation.hrirs.sampling_rate
+
+    with tempfile.TemporaryDirectory() as tmpdir:
+        file_path = f"{tmpdir}/example.sofa"
+
+        # Save the SOFA file
+        sf.write_sofa(file_path, sofa)
+
+        # You can read it back if needed
+        sofa = eng.SOFAload(file_path, nargout=1)
+    return sofa
 
 def _get_subset(sofa, sampling):
     eng = _get_matlab_engine()
@@ -59,45 +250,47 @@ def barumerli_localization(
             template_head_orientations.n_orientations:
         raise ValueError("Don't do this")
 
-    # extract target_features
-    sofa_target = eng.SOFAload(
-        str(target_head_orientations.sofa_file_paths[0]), nargout=1)
-
-    sofa_target = _get_subset(sofa_target, subsampling)
-
-    feat_target = eng.barumerli2023_NOINTERPOLATION_featureextraction(
-        sofa_target,
-        'target',
-        'pge',
-        nargout=1)
+    if target_head_orientations.n_orientations == 1:
+        print("single target orientation")
+        if target_head_orientations.sofa_file_paths is None:
+            sofa_target = _load_tmp_sofa(target_head_orientations[0])
+        else:
+            sofa_target = eng.SOFAload(
+                str(target_head_orientations.sofa_file_paths[0]), nargout=1)
+        sofa_target = _get_subset(sofa_target, subsampling)
+        feat_target = eng.barumerli2023_NOINTERPOLATION_featureextraction(
+            sofa_target,
+            'target',
+            'pge',
+            nargout=1)
 
     results = []
 
-    for head_orientation in template_head_orientations:
+    for idx in range(template_head_orientations.n_orientations):
         # If the template has beed interpolated before, there is no
         # corresponding sofa file, so we create a temporary one
-        if head_orientation.sofa_file_paths is None:
-            print("creating tempdir for head template")
-            sofa = sf.Sofa("SimpleFreeFieldHRIR")
-            sofa.SourcePosition = head_orientation.source_positions.spherical_elevation
-
-            sofa.Data_IR = head_orientation.hrirs.time[0]
-            sofa.Data_SamplingRate = head_orientation.hrirs.sampling_rate
-
-            with tempfile.TemporaryDirectory() as tmpdir:
-                file_path = f"{tmpdir}/example.sofa"
-
-                # Save the SOFA file
-                sf.write_sofa(file_path, sofa)
-
-                # You can read it back if needed
-                sofa_template = eng.SOFAload(file_path, nargout=1)
-
+        if template_head_orientations.sofa_file_paths is None:
+            sofa_template = _load_tmp_sofa(template_head_orientations[idx])
         else:
             # exctract template features for current ho
             sofa_template = \
-                eng.SOFAload(str(template_head_orientations.sofa_file_paths[0]),
+                eng.SOFAload(str(template_head_orientations.sofa_file_paths[idx]),
                             nargout=1)
+
+        if target_head_orientations.n_orientations != 1:
+            if target_head_orientations.sofa_file_paths is None:
+                sofa_target = _load_tmp_sofa(target_head_orientations[idx])
+            else:
+                # exctract target features for current ho
+                sofa_target = \
+                    eng.SOFAload(str(target_head_orientations.sofa_file_paths[idx]),
+                                nargout=1)
+            sofa_target = _get_subset(sofa_target, subsampling)
+            feat_target = eng.barumerli2023_NOINTERPOLATION_featureextraction(
+                sofa_target,
+                'target',
+                'pge',
+                nargout=1)
 
         sofa_template = _get_subset(sofa_template, subsampling)
 
@@ -116,14 +309,14 @@ def barumerli_localization(
                                             'middle_metrics')
 
         if output_dir:
-            orientation = head_orientation.head_orientations
-            filename = f"metrics_bend_{int(orientation[:, 0])}" \
-                f"elev_{int(orientation[:, 1])}" \
-                    f"azim{int(orientation[:, 2])}.mat"
+            orientation = template_head_orientations.head_orientations[idx]
+            filename = f"metrics_bend_{int(orientation[0])}" \
+                f"elev_{int(orientation[1])}" \
+                    f"azim{int(orientation[2])}.mat"
             filepath = os.path.join(output_dir, filename)
             sc.io.savemat(filepath, metrics)
             print(f"saved to {filepath}")
 
         results.append(metrics)
 
-    return results, template_head_orientations.head_orientations
+    return results
