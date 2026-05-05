@@ -94,7 +94,6 @@ def directional_transfer_function(head_orientations: HeadOrientations,
     ctf = pf.dsp.average(hrirs, average_method,
                          caxis=caxes)
 
-    print(ctf)
     inverse_ctf = 1/ctf
     dtf = inverse_ctf[:, None, None] * hrirs
 
