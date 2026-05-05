@@ -365,6 +365,17 @@ class HeadOrientations:
                 sofa_fp
             )
 
+    def __getitem__(self, idx):
+        """"""
+        orientations = np.asarray(self._head_orientations)
+        sofa_fp = None if self.sofa_file_paths is None \
+            else self.sofa_file_paths[idx:idx + 1]
+        return HeadOrientations(
+            self._hrirs[idx:idx + 1, :],
+            self._coordinates,
+            orientations[idx:idx + 1],
+            sofa_fp)
+
     # PROPERTIES
     @property
     def sofa_file_paths(self):
