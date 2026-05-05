@@ -2,6 +2,7 @@ import numpy as np
 import pyfar as pf
 import os
 import re
+from typing import Sequence
 
 
 pattern = re.compile(
@@ -393,6 +394,11 @@ class HeadOrientations:
         """
         return self._coordinates
 
+    @source_positions.setter
+    def source_positions(self, values):
+        """"""
+        self._coordinates = values
+
     @property
     def hrirs(self):
         """HRIR data for selected head orientations.
@@ -403,6 +409,11 @@ class HeadOrientations:
             HRIR signal object.
         """
         return self._hrirs
+
+    @hrirs.setter
+    def hrirs(self, values):
+        """"""
+        self._hrirs = values
 
     @property
     def head_orientations(self):
@@ -425,3 +436,4 @@ class HeadOrientations:
             Number of orientation entries.
         """
         return self._head_orientations.shape[0]
+
