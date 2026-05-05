@@ -10,7 +10,7 @@ readme = "README.md"
 requires-python = ">=3.11"
 license = { file = "LICENSE" }
 authors = [
-    { name = "HATO Contributors" }
+    { name = "Anton Hoyer" }
 ]
 keywords = [
     "audio",
