@@ -2,6 +2,7 @@ import pyfar as pf
 import sofar as sf
 import scipy as sc
 from importlib import import_module
+from typing import Sequence
 import tempfile
 from .head_orientation_class import HeadOrientations
 import os
@@ -320,3 +321,34 @@ def barumerli_localization(
         results.append(metrics)
 
     return results
+
+
+def coloration_mc_kenzie(head_orientations: HeadOrientations,
+                         reference: HeadOrientations,
+                         frequency_range: Sequence = (300, 20e3)):
+    """"""
+    eng = _get_matlab_engine()
+    results = []
+
+    if frequency_range:
+        settings_dict = {"minFreq": frequency_range[0],
+                         "maxFreq": frequency_range[1],}
+    else:
+        settings_dict = eng.struct()
+
+    hrirs = head_orientations.hrirs
+    source = head_orientations.source_positions
+
+    ref_hrirs = reference.hrirs
+    ref_data = np.transpose(ref_hrirs.time.squeeze(axis=0), axes=[2, 0, 1]).copy()
+
+    for id in range(head_orientations.n_orientations):
+        data = np.transpose(hrirs.time.squeeze(axis=0), axes=[2, 0, 1]).copy()
+        pbc = eng.mckenzie2025(ref_data, data, settings_dict, nargout=1)
+
+        pbc = np.asarray(pbc).squeeze()
+        results.append(pbc)
+
+    return results
+
+
