@@ -32,12 +32,13 @@ class HeadOrientationsMetrics:
     )
     DEFAULT_METRIC_KEYS = ("accL", "rmsL", "accP", "rmsP", "querr", "gainP")
 
-    def __init__(self, base_dir, metric_keys=None):
+    def __init__(self, base_dir, metric_keys=None, comment=None):
         self._base_dir = base_dir
         self._filepaths = []
         self._head_orientations = []
         self._metric_keys = tuple(metric_keys) if metric_keys is not None else self.DEFAULT_METRIC_KEYS
         self._metrics = {key: [] for key in self._metric_keys}
+        self._comment = comment
 
         self._find_files(base_dir)
 
@@ -46,6 +47,14 @@ class HeadOrientationsMetrics:
             f"HeadOrientationsMetrics with {self.n_orientations} entries "
             f"and metrics {self._metric_keys}"
         )
+
+    @property
+    def comment(self):
+        return str(self._comment)
+
+    @comment.setter
+    def comment(self, value):
+        self._comment = str(value)
 
     @property
     def head_orientations(self):
