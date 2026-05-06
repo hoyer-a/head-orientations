@@ -13,11 +13,11 @@ import numpy as np
 _MATLAB_ENGINE = None
 
 class HeadOrientationsMetrics:
-    """Container for Barumerli localization metrics saved as .mat files.
+    """Container for localization metrics saved as .mat files.
 
     Scans a directory for files named like
     ``metrics_bend_<bend>elev_<elev>azim<azim>.mat`` and loads the
-    stored metrics (e.g. ``rmsL``, ``rmsP``, ``querr``) per orientation.
+    stored metrics per orientation.
 
     Parameters
     ----------
@@ -30,17 +30,22 @@ class HeadOrientationsMetrics:
         r"elev_(?P<elev>-?\d+(?:\.\d+)?)"
         r"azim(?P<azim>-?\d+(?:\.\d+)?)\.mat$"
     )
+    DEFAULT_METRIC_KEYS = ("accL", "rmsL", "accP", "rmsP", "querr", "gainP")
 
-    def __init__(self, base_dir):
+    def __init__(self, base_dir, metric_keys=None):
         self._base_dir = base_dir
         self._filepaths = []
         self._head_orientations = []
-        self._metrics = []
+        self._metric_keys = tuple(metric_keys) if metric_keys is not None else self.DEFAULT_METRIC_KEYS
+        self._metrics = {key: [] for key in self._metric_keys}
 
         self._find_files(base_dir)
 
     def __repr__(self):
-        return f"HeadOrientationsMetrics with {self.n_orientations} entries"
+        return (
+            f"HeadOrientationsMetrics with {self.n_orientations} entries "
+            f"and metrics {self._metric_keys}"
+        )
 
     @property
     def head_orientations(self):
@@ -51,19 +56,30 @@ class HeadOrientationsMetrics:
         return np.asarray(self._filepaths)
 
     @property
+    def metric_keys(self):
+        return self._metric_keys
+
+    @property
     def n_orientations(self):
         return len(self._filepaths)
 
+    @property
+    def metrics_matrix(self):
+        return np.column_stack([self.metric_values(key) for key in self._metric_keys])
+
+    def metric_values(self, key):
+        if key not in self._metrics:
+            raise KeyError(f"Unknown metric key: {key}")
+        return np.asarray(self._metrics[key], dtype=float)
+
     def get_metrics(self, bend=None, elevation=None, azimuth=None, tol=1e-9,
                     return_indices=False):
-        """Return metrics matching a query (similar semantics to
-        HeadOrientationsDataset.find_head_orientations).
-        """
+        """Return head orientations and metric arrays matching a query."""
         indices = self._find_orientation(bend=bend, elevation=elevation,
                                          azimuth=azimuth, tol=tol)
         if return_indices:
             return indices
-        return [self._metrics[i] for i in indices]
+        return self.head_orientations[indices], self.metrics_matrix[indices]
 
     def _find_files(self, base_dir):
         """Scan the base directory (recursively) and load .mat metric files."""
@@ -86,20 +102,9 @@ class HeadOrientationsMetrics:
                 except Exception:
                     mat = None
 
-                metrics = {
-                    "rmsL": None,
-                    "rmsP": None,
-                    "querr": None,
-                    "raw": mat,
-                }
-
-                if mat is not None:
-                    for key in ("rmsL", "rmsP", "querr"):
-                        val = self._find_in_mat(mat, key)
-                        if val is not None:
-                            metrics[key] = np.asarray(val)
-
-                self._metrics.append(metrics)
+                for key in self._metric_keys:
+                    val = self._find_in_mat(mat, key)
+                    self._metrics[key].append(self._coerce_metric_value(val))
 
     def _find_in_mat(self, obj, key):
         """Recursively search a loaded .mat structure for a field named ``key``.
@@ -118,6 +123,19 @@ class HeadOrientationsMetrics:
                     return res
             return None
 
+        if hasattr(obj, "_fieldnames"):
+            fieldnames = getattr(obj, "_fieldnames", None) or []
+            if key in fieldnames:
+                return getattr(obj, key)
+            for field in fieldnames:
+                res = self._find_in_mat(getattr(obj, field), key)
+                if res is not None:
+                    return res
+            return None
+
+        if hasattr(obj, key):
+            return getattr(obj, key)
+
         if isinstance(obj, np.ndarray):
             # iterate elements (handles struct arrays / object arrays)
             for el in obj.ravel():
@@ -127,6 +145,15 @@ class HeadOrientationsMetrics:
             return None
 
         return None
+
+    @staticmethod
+    def _coerce_metric_value(value):
+        if value is None:
+            return np.nan
+        arr = np.asarray(value, dtype=float)
+        if arr.size == 1:
+            return float(arr.squeeze())
+        return arr
 
     def _find_orientation(self, bend=None, elevation=None, azimuth=None,
                           tol=1e-9):
@@ -179,6 +206,19 @@ class HeadOrientationsMetrics:
         if query_values is None:
             return np.ones(orientation_values.shape[0], dtype=bool)
         return np.any(np.isclose(orientation_values[:, None], query_values[None, :], atol=tol, rtol=0.0), axis=1)
+
+    def __getattr__(self, name):
+        if name in self._metrics:
+            return np.asarray(self._metrics[name], dtype=float)
+        raise AttributeError(f"{type(self).__name__!s} has no attribute {name!r}")
+
+
+for _metric_name in HeadOrientationsMetrics.DEFAULT_METRIC_KEYS:
+    setattr(
+        HeadOrientationsMetrics,
+        _metric_name,
+        property(lambda self, metric_name=_metric_name: np.asarray(self._metrics[metric_name], dtype=float)),
+    )
 
 def _get_matlab_engine():
     global _MATLAB_ENGINE
