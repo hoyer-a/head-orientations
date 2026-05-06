@@ -5,7 +5,9 @@ import numpy as np
 import pyfar as pf
 
 from .head_orientation_class import HeadOrientations
-from typing import Sequence
+from .metrics import HeadOrientationsMetrics
+
+from typing import Sequence, Union
 
 
 def subplot_spectral_difference(reference, head_orientations,
@@ -246,3 +248,50 @@ def plot_single_spectral_difference(ho1: HeadOrientations,
         )[0]
     ax[0].set_ylabel('angle in degree')
     plt.show()
+
+
+def plot_localization_1_dof(
+    metrics: Union[HeadOrientationsMetrics, Sequence[HeadOrientationsMetrics]],
+    metric: str,
+    limits: Sequence = None):
+    """
+    Plot localization metrics over a single rotational axis.
+    """
+    # Normalize to a list
+    if isinstance(metrics, HeadOrientationsMetrics):
+        metrics = [metrics]
+    for m in metrics:
+        # your plotting logic here
+        head_orientations = m.head_orientations
+
+        bend = head_orientations[:, 0]
+        elev = head_orientations[:, 1]
+        azim = head_orientations[:, 2]
+
+        is_zero = [np.all(bend == 0), np.all(elev == 0), np.all(azim == 0)]
+
+        if sum(is_zero)!=2:
+            raise ValueError("Can only plot metrics for head orientations in one" \
+            "rotational axis, e.g. bend=0 and elev=0 for all orientations")
+
+        values = m.__getattribute__(metric)
+
+        axis_idx = np.where(~np.array(is_zero))[0]
+        angles = head_orientations[:, axis_idx]
+
+        plt.plot(angles, values, marker='x', ls='', label=m.comment)
+        plt.ylim(limits)
+        plt.ylabel(metric)
+        plt.grid(True)
+        plt.legend()
+
+
+
+    return values
+
+def plot_localization_map(metrics: HeadOrientationsMetrics,
+                          rotation: float = None):
+    """
+    Plot localization as a map of bend, flexex and a given rotation.
+    """
+    pass
