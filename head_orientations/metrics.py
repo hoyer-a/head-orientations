@@ -204,7 +204,14 @@ def _load_tmp_sofa(head_orientation):
     eng = _get_matlab_engine()
 
     sofa = sf.Sofa("SimpleFreeFieldHRIR")
-    sofa.SourcePosition = head_orientation.source_positions.spherical_elevation
+
+    # pyfar coordinates are in radians, SOFA SourcePosition uses degrees.
+    source_positions = np.asarray(
+        head_orientation.source_positions.spherical_elevation,
+        dtype=float,
+    ).copy()
+    source_positions[:, :2] = np.rad2deg(source_positions[:, :2])
+    sofa.SourcePosition = source_positions
 
     sofa.Data_IR = head_orientation.hrirs.time[0]
     sofa.Data_SamplingRate = head_orientation.hrirs.sampling_rate
@@ -220,9 +227,17 @@ def _load_tmp_sofa(head_orientation):
     return sofa
 
 def _get_subset(sofa, sampling):
+    if sampling is None:
+        return sofa
+
     eng = _get_matlab_engine()
-    idx = eng.SOFAfind(sofa, sampling.azimuth,
-                       sampling.elevation, nargout=1)
+
+    # pyfar/spharpy coordinate angles are in radians, SOFAfind expects degrees.
+    azimuth_deg = np.rad2deg(np.asarray(sampling.azimuth, dtype=float))
+    elevation_deg = np.rad2deg(np.asarray(sampling.elevation, dtype=float))
+
+    idx = eng.SOFAfind(sofa, azimuth_deg,
+                       elevation_deg, nargout=1)
 
     eng.workspace['sofa'] = sofa
     eng.workspace['idx'] = idx
@@ -259,11 +274,10 @@ def barumerli_localization(
             sofa_target = eng.SOFAload(
                 str(target_head_orientations.sofa_file_paths[0]), nargout=1)
         sofa_target = _get_subset(sofa_target, subsampling)
-        feat_target = eng.barumerli2023_NOINTERPOLATION_featureextraction(
+        _, feat_target = eng.barumerli2023_NOINTERPOLATION_featureextraction(
             sofa_target,
-            'target',
             'pge',
-            nargout=1)
+            nargout=2)
 
     results = []
 
@@ -287,19 +301,17 @@ def barumerli_localization(
                     eng.SOFAload(str(target_head_orientations.sofa_file_paths[idx]),
                                 nargout=1)
             sofa_target = _get_subset(sofa_target, subsampling)
-            feat_target = eng.barumerli2023_NOINTERPOLATION_featureextraction(
+            _, feat_target = eng.barumerli2023_NOINTERPOLATION_featureextraction(
                 sofa_target,
-                'target',
                 'pge',
-                nargout=1)
+                nargout=2)
 
         sofa_template = _get_subset(sofa_template, subsampling)
 
-        feat_template = \
+        feat_template, _ = \
             eng.barumerli2023_NOINTERPOLATION_featureextraction(sofa_template,
-                                                                'template',
                                                                 'pge',
-                                                                nargout=1)
+                                                                nargout=2)
 
         # get prediction
         prediction_matrix = eng.barumerli2023('template', feat_template,
