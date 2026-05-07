@@ -440,6 +440,15 @@ def barumerli_localization(
             sc.io.savemat(filepath, metrics)
             print(f"saved to {filepath}")
 
+            if save_matrix:
+                matrix_dir = os.path.join(output_dir, 'prediction_matrices')
+                os.mkdir(matrix_dir)
+                matrix_filename = f"matrix_bend_{int(orientation[0])}" \
+                    f"elev_{int(orientation[1])}" \
+                        f"azim{int(orientation[2])}.mat"
+                matrix_filepath = os.path.join(matrix_dir, filename)
+                sc.io.savemat(matrix_filepath, prediction_matrix)
+
         results.append(metrics)
 
     return results
