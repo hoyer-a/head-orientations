@@ -13,16 +13,19 @@ import numpy as np
 _MATLAB_ENGINE = None
 
 class HeadOrientationsMetrics:
-    """Container for localization metrics saved as .mat files.
+    """Container for localization metrics from .mat files or arrays.
 
-    Scans a directory for files named like
-    ``metrics_bend_<bend>elev_<elev>azim<azim>.mat`` and loads the
-    stored metrics per orientation.
+    Can load metrics from .mat files in a directory by passing `base_dir`,
+    or create from arrays using the `from_data` class method.
 
     Parameters
     ----------
-    base_dir : str or path-like
-        Directory to scan for metric .mat files.
+    base_dir : str, path-like, or None
+        Directory to scan for metric .mat files. If None, no files are loaded.
+    metric_keys : tuple or list, optional
+        Metric names to extract. Defaults to DEFAULT_METRIC_KEYS.
+    comment : str, optional
+        Optional comment/metadata string.
     """
 
     _pattern = re.compile(
@@ -32,7 +35,7 @@ class HeadOrientationsMetrics:
     )
     DEFAULT_METRIC_KEYS = ("accL", "rmsL", "accP", "rmsP", "querr", "gainP")
 
-    def __init__(self, base_dir, metric_keys=None, comment=None):
+    def __init__(self, base_dir=None, metric_keys=None, comment=None):
         self._base_dir = base_dir
         self._filepaths = []
         self._head_orientations = []
@@ -40,13 +43,71 @@ class HeadOrientationsMetrics:
         self._metrics = {key: [] for key in self._metric_keys}
         self._comment = comment
 
-        self._find_files(base_dir)
+        if base_dir is not None:
+            self._find_files(base_dir)
 
     def __repr__(self):
         return (
             f"HeadOrientationsMetrics with {self.n_orientations} entries "
             f"and metrics {self._metric_keys}"
         )
+
+    @classmethod
+    def from_data(cls, head_orientations, metric_keys=None, comment=None, **metrics_data):
+        """Create HeadOrientationsMetrics from arrays.
+
+        Parameters
+        ----------
+        head_orientations : array-like
+            Head orientation values with shape (n_orientations, 3) as
+            [bend, elevation, azimuth].
+        metric_keys : tuple or list, optional
+            Metric names. If None, inferred from metrics_data keys.
+        comment : str, optional
+            Optional comment/metadata string.
+        **metrics_data
+            Keyword arguments for each metric (e.g., querr=querr_array,
+            rmsL=rmsL_array). Each must have shape (n_orientations,) or
+            be broadcastable to that shape.
+
+        Returns
+        -------
+        HeadOrientationsMetrics
+            New instance with data populated from arrays.
+        """
+        head_orientations = np.asarray(head_orientations, dtype=float)
+        if head_orientations.ndim == 1:
+            head_orientations = head_orientations.reshape(1, -1)
+        n_orientations = head_orientations.shape[0]
+
+        # Infer metric keys from metrics_data if not provided
+        if metric_keys is None:
+            metric_keys = tuple(sorted(metrics_data.keys()))
+        else:
+            metric_keys = tuple(metric_keys)
+
+        # Create instance without loading files
+        instance = cls(base_dir=None, metric_keys=metric_keys, comment=comment)
+
+        # Populate head orientations
+        instance._head_orientations = head_orientations.tolist()
+        instance._filepaths = [None] * n_orientations
+
+        # Populate metrics
+        for key in metric_keys:
+            if key not in metrics_data:
+                raise ValueError(
+                    f"Missing metric key '{key}'. Provide it as a keyword argument."
+                )
+            values = np.asarray(metrics_data[key], dtype=float).ravel()
+            if values.shape[0] != n_orientations:
+                raise ValueError(
+                    f"Metric '{key}' has {values.shape[0]} values, "
+                    f"expected {n_orientations}."
+                )
+            instance._metrics[key] = values.tolist()
+
+        return instance
 
     @property
     def comment(self):
