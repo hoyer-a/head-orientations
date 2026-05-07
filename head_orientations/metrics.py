@@ -416,8 +416,6 @@ def barumerli_localization(
                 'pge',
                 nargout=2)
 
-        sofa_template = _get_subset(sofa_template, subsampling)
-
         feat_template, _ = \
             eng.barumerli2023_NOINTERPOLATION_featureextraction(sofa_template,
                                                                 'pge',
@@ -442,12 +440,15 @@ def barumerli_localization(
 
             if save_matrix:
                 matrix_dir = os.path.join(output_dir, 'prediction_matrices')
-                os.mkdir(matrix_dir)
+                if not os.path.exists(matrix_dir):
+                    os.mkdir(matrix_dir)
                 matrix_filename = f"matrix_bend_{int(orientation[0])}" \
                     f"elev_{int(orientation[1])}" \
                         f"azim{int(orientation[2])}.mat"
-                matrix_filepath = os.path.join(matrix_dir, filename)
-                sc.io.savemat(matrix_filepath, prediction_matrix)
+                matrix_filepath = os.path.join(matrix_dir, matrix_filename)
+                sc.io.savemat(matrix_filepath,
+                              {"prediction_matrix": prediction_matrix}
+)
 
         results.append(metrics)
 
