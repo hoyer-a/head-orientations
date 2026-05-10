@@ -290,8 +290,31 @@ def plot_localization_1_dof(
     return values
 
 def plot_localization_map(metrics: HeadOrientationsMetrics,
-                          rotation: float = None):
+                          rotation: float = None,
+                          metric: str = None):
     """
     Plot localization as a map of bend, flexex and a given rotation.
     """
-    pass
+    metric_ = metrics.__getattr__(metric)
+    rotation = np.atleast_1d(rotation)
+
+    for rotation_ in rotation:
+        azi = metrics.head_orientations[:, 2]
+        # use boolean mask for clearer indexing
+        mask = (azi == rotation_)
+
+        lateral_bend = metrics.head_orientations[mask, 0]
+        flexex = metrics.head_orientations[mask, 1]
+        colors = metric_[mask]
+
+        fig, ax = plt.subplots()
+        sc = ax.scatter(lateral_bend, flexex, c=colors,
+                        cmap='viridis', alpha=0.8, s=30)
+        ax.set_title(f'{rotation_}° rotation')
+        ax.set_xlabel('Lateral Bend [°]')
+        ax.set_ylabel('Flexion/Extension [°]')
+        ax.grid(True, alpha=0.3)
+        ax.set_aspect('equal', adjustable='box')
+        cbar = fig.colorbar(sc, ax=ax)
+        cbar.set_label(metric)
+        plt.show()
