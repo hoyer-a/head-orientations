@@ -250,6 +250,14 @@ def plot_single_spectral_difference(ho1: HeadOrientations,
     plt.show()
 
 
+def plot_mean_signed_spectral_difference(head_orientation: HeadOrientations,
+                                         ):
+    if head_orientation.n_orientations !=1:
+        raise ValueError("Single head orientation must be passed, but "
+                         f"{head_orientation.n_orientations} were passed.")
+    pass
+
+
 def plot_localization_1_dof(
     metrics: Union[HeadOrientationsMetrics, Sequence[HeadOrientationsMetrics]],
     metric: str,
@@ -285,36 +293,103 @@ def plot_localization_1_dof(
         plt.grid(True)
         plt.legend()
 
-
-
     return values
 
-def plot_localization_map(metrics: HeadOrientationsMetrics,
-                          rotation: float = None,
-                          metric: str = None):
+
+def plot_localization_map(
+        metrics: HeadOrientationsMetrics,
+        rotation: float = None,
+        metric: str = None):
     """
-    Plot localization as a map of bend, flexex and a given rotation.
+    Plot localization metric as Voronoi cells over
+    lateral bend / flexion-extension space.
     """
-    metric_ = metrics.__getattr__(metric)
+
+    from scipy.spatial import Voronoi
+    from matplotlib.patches import Polygon
+    from matplotlib.collections import PatchCollection
+    from matplotlib.colors import Normalize
+
+    metric_ = getattr(metrics, metric)
     rotation = np.atleast_1d(rotation)
 
     for rotation_ in rotation:
+
         azi = metrics.head_orientations[:, 2]
-        # use boolean mask for clearer indexing
         mask = (azi == rotation_)
 
         lateral_bend = metrics.head_orientations[mask, 0]
         flexex = metrics.head_orientations[mask, 1]
         colors = metric_[mask]
 
-        fig, ax = plt.subplots()
-        sc = ax.scatter(lateral_bend, flexex, c=colors,
-                        cmap='viridis', alpha=0.8, s=30)
+        points = np.column_stack((lateral_bend, flexex))
+
+        # compute Voronoi tessellation
+        vor = Voronoi(points)
+
+        fig, ax = plt.subplots(figsize=(7, 6))
+
+        patches = []
+        patch_colors = []
+
+        for point_idx, region_idx in enumerate(vor.point_region):
+
+            region = vor.regions[region_idx]
+
+            # skip infinite regions
+            if -1 in region or len(region) == 0:
+                continue
+
+            polygon = [vor.vertices[i] for i in region]
+
+            patches.append(Polygon(polygon, closed=True))
+            patch_colors.append(colors[point_idx])
+
+        norm = Normalize(
+            vmin=np.nanmin(colors),
+            vmax=np.nanmax(colors)
+        )
+
+        collection = PatchCollection(
+            patches,
+            cmap='viridis',
+            norm=norm,
+            edgecolor='black',
+            linewidth=0.5
+        )
+
+        collection.set_array(np.array(patch_colors))
+
+        ax.add_collection(collection)
+
+        # overlay sample points
+        ax.scatter(
+            lateral_bend,
+            flexex,
+            c='black',
+            s=10,
+            zorder=10
+        )
+
+        ax.set_xlim(
+            lateral_bend.min() - 5,
+            lateral_bend.max() + 5
+        )
+
+        ax.set_ylim(
+            flexex.min() - 5,
+            flexex.max() + 5
+        )
+
         ax.set_title(f'{rotation_}° rotation')
         ax.set_xlabel('Lateral Bend [°]')
         ax.set_ylabel('Flexion/Extension [°]')
-        ax.grid(True, alpha=0.3)
+
         ax.set_aspect('equal', adjustable='box')
-        cbar = fig.colorbar(sc, ax=ax)
+        ax.grid(True, alpha=0.2)
+
+        cbar = fig.colorbar(collection, ax=ax)
         cbar.set_label(metric)
+
+        plt.tight_layout()
         plt.show()
