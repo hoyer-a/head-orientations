@@ -98,7 +98,7 @@ def interpolate(head_orientations: HeadOrientations,
         hrir_nm = spharpy.SphericalHarmonicSignal.from_definition(
             sh_definition, hrir_nm.time, hrir_nm.sampling_rate)
 
-        orientation = -np.deg2rad(orientation).squeeze()
+        orientation = np.deg2rad(orientation).squeeze()
 
         if rotate:
             Rotation = \
