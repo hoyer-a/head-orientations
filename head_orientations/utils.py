@@ -100,6 +100,23 @@ def spectral_difference(sig1: pf.Signal, sig2: pf.Signal) -> pf.FrequencyData:
 
     """
     spec_diff = np.abs(sig1.freq_raw) / np.abs(sig2.freq_raw)
-    spec_diff = pf.FrequencyData(spectral_difference, sig1.frequencies)
+    spec_diff = pf.FrequencyData(spec_diff, sig1.frequencies)
 
     return spec_diff
+
+
+def mean_spectral_difference(sig1: pf.Signal,
+                             sig2: pf.Signal,
+                             method: str = "mean_db"):
+    """"""
+    spec_diff = spectral_difference(sig1, sig2)
+    db = pf.dsp.decibel(spec_diff)
+
+    if method == "mean_db":
+        mean_sdif = np.mean(db, axis=-1)
+    else:
+        raise NotImplementedError("Only mean_db is implemented.")
+
+    return mean_sdif
+
+
