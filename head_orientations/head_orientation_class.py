@@ -2,6 +2,7 @@ import numpy as np
 import pyfar as pf
 import os
 import re
+from copy import deepcopy
 from typing import Sequence
 
 
@@ -437,3 +438,6 @@ class HeadOrientations:
         """
         return self._head_orientations.shape[0]
 
+    def copy(self):
+        """"""
+        return deepcopy(self)
