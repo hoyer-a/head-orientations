@@ -1,16 +1,18 @@
 import matplotlib.colors as mcolors
 import matplotlib.pyplot as plt
+import matplotlib.tri as mtri
 from matplotlib.gridspec import GridSpec
 import numpy as np
 import pyfar as pf
 
 from .head_orientation_class import HeadOrientations
 from .metrics import HeadOrientationsMetrics
+from .utils import spectral_difference, mean_spectral_difference
 
 from typing import Sequence, Union
 
 
-def subplot_spectral_difference(reference, head_orientations,
+def subplot_spectral_difference(head_orientations, reference,
                                 plane='horizontal', ear='left',
                                 db_threshold=None, limits=None,
                                 sort=False):
@@ -21,10 +23,10 @@ def subplot_spectral_difference(reference, head_orientations,
     Parameters
     ----------
 
-    reference : HeadOrientations
-        Reference object containing exactly one head orientation.
     head_orientations : HeadOrientations
         Object containing one or more head orientations to be evaluated.
+    reference : HeadOrientations
+        Reference object containing exactly one head orientation.
     plane : string
         Plane to be plotted against frequency, can be 'median', 'frontal' or
         'horizontal'.
@@ -118,24 +120,19 @@ def subplot_spectral_difference(reference, head_orientations,
         print(hrirs)
         print(reference_hrirs)
 
-        spectral_difference = (
-            np.abs(hrirs.freq_raw) / np.abs(reference_hrirs.freq_raw)
-        )
-        spectral_difference = pf.FrequencyData(
-            spectral_difference, hrirs.frequencies
-        )
+        spec_diff = spectral_difference(hrirs, reference_hrirs)
 
         print(spectral_difference)
 
         if db_threshold:
             db, prefix = \
-                pf.dsp.decibel(spectral_difference, return_prefix=True)
+                pf.dsp.decibel(spec_diff, return_prefix=True)
 
             idx_threshold = np.where(
                 (db > -db_threshold) & (db < db_threshold)
             )
             db[idx_threshold] = 0
-            spectral_difference = \
+            spec_diff = \
                 pf.FrequencyData(10 ** (db / prefix), hrirs.frequencies)
 
         row = i // columns
@@ -143,7 +140,7 @@ def subplot_spectral_difference(reference, head_orientations,
 
         ax = fig.add_subplot(gs[row, col])
         pf.plot.freq_2d(
-            spectral_difference[:, ear_id].flatten(),
+            spec_diff[:, ear_id].flatten(),
             ax=ax,
             indices=np.rad2deg(angles),
             orientation='horizontal',
@@ -216,30 +213,25 @@ def plot_single_spectral_difference(ho1: HeadOrientations,
     hrirs2 = hrirs2[:, *idx_2]
 
     # plot
-    spectral_difference = (
-        np.abs(hrirs1.freq_raw) / np.abs(hrirs2.freq_raw)
-    )
-    spectral_difference = pf.FrequencyData(
-        spectral_difference, hrirs1.frequencies
-    )
+    spec_diff = spectral_difference(hrirs1, hrirs2)
 
     if db_threshold:
         db, prefix = \
-            pf.dsp.decibel(spectral_difference, return_prefix=True)
+            pf.dsp.decibel(spec_diff, return_prefix=True)
 
         idx_threshold = np.where(
             (db > -db_threshold) & (db < db_threshold)
         )
         db[idx_threshold] = 0
-        spectral_difference = \
+        spec_diff = \
             pf.FrequencyData(10 ** (db / prefix), hrirs1.frequencies)
 
-    spectral_difference = spectral_difference[0, ...]
-    print(spectral_difference)
+    spec_diff = spec_diff[0, ...]
+    print(spec_diff)
     print(angles.shape)
 
     ax = pf.plot.freq_2d(
-            spectral_difference[:, ear_id].flatten(),
+            spec_diff[:, ear_id].flatten(),
             indices=np.rad2deg(angles),
             orientation='horizontal',
             cmap=cmap,
@@ -250,12 +242,90 @@ def plot_single_spectral_difference(ho1: HeadOrientations,
     plt.show()
 
 
-def plot_mean_signed_spectral_difference(head_orientation: HeadOrientations,
-                                         ):
+def plot_mean_spectral_difference(head_orientation: HeadOrientations,
+                                  reference: HeadOrientations,
+                                  ear: str = "left",
+                                  average_type: str = 'mean_db',
+                                  limits_db: Sequence = None):
+    """"""
     if head_orientation.n_orientations !=1:
         raise ValueError("Single head orientation must be passed, but "
                          f"{head_orientation.n_orientations} were passed.")
-    pass
+
+    if ear == "left":
+        ear_id = 0
+    elif ear == "right":
+        ear_id = 1
+    else:
+        raise ValueError("ear must be 'left' or 'right'")
+
+    hrirs = head_orientation.hrirs
+    hrirs_ref = reference.hrirs
+
+    mean_sdif = mean_spectral_difference(hrirs, hrirs_ref)[0, :, ear_id]
+
+    source = head_orientation.source_positions
+
+    cmap = mcolors.LinearSegmentedColormap.from_list(
+        "blue_white_red",
+        ["blue", "white", "red"],
+        N=256)
+
+    fig, ax = plt.subplots(constrained_layout=True,
+                           subplot_kw={"projection": "mollweide"})
+    contour = _plot_sd_source_map(ax, source, mean_sdif, cmap, limits_db)
+    ax.set_xlabel("Azimuth in degree")
+    ax.set_ylabel("Elevation in degree")
+
+    # add a simple horizontal colorbar
+    if contour is not None:
+        cbar = fig.colorbar(
+            contour,
+            ax=ax,
+            orientation="horizontal",
+            fraction=0.04,
+            pad=0.05,
+        )
+        cbar.set_label("Spectral difference in dB")
+
+    plt.show()
+
+
+def _plot_sd_source_map(ax, source, values, cmap, limits_db):
+    """"""
+    azimuth = np.asarray(source.azimuth).squeeze()
+    elevation = np.asarray(source.elevation).squeeze()
+
+    # Wrap longitudes to [-pi, pi] for geographic Mollweide coordinates.
+    azimuth = ((azimuth + np.pi) % (2 * np.pi)) - np.pi
+
+    if limits_db is None:
+        vmin = np.nanmin(values)
+        vmax = np.nanmax(values)
+    else:
+        vmin, vmax = limits_db
+
+    triangulation = mtri.Triangulation(azimuth, elevation)
+    contour = ax.tricontourf(
+        triangulation,
+        values,
+        levels=21,
+        cmap=cmap,
+        vmin=vmin,
+        vmax=vmax,
+    )
+
+    xticks_deg = [-150, -90, -30, 30, 90, 150]
+    xticks_rad = np.deg2rad(xticks_deg)
+    yticks_deg = [-60, -30, 0, 30, 60]
+    yticks_rad = np.deg2rad(yticks_deg)
+
+    ax.set_xticks(xticks_rad)
+    ax.set_xticklabels([f"{tick}°" for tick in xticks_deg])
+    ax.set_yticks(yticks_rad)
+    ax.set_yticklabels([f"{tick}°" for tick in yticks_deg])
+    ax.grid(True, alpha=0.2, lw=0.4)
+    return contour
 
 
 def plot_localization_1_dof(
