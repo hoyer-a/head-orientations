@@ -9,7 +9,8 @@ def interpolate(head_orientations: HeadOrientations,
                 target_coordinates: pf.Coordinates,
                 n_max: int,
                 grid: str = "lebedev",
-                rotate: bool = True,):
+                rotate: bool = True,
+                calculate_weights: bool = True):
     """
     Interpolate HRIRs in a global (torso-centered) coordinate system.
 
@@ -60,6 +61,8 @@ def interpolate(head_orientations: HeadOrientations,
 
     # Get SamplingSphere for source and target coordinates
     sampling = spharpy.SamplingSphere.from_coordinates(source)
+    if calculate_weights:
+        sampling.weights = spharpy.samplings.calculate_sampling_weights(sampling)
 
     if type(target_coordinates) == spharpy.SamplingSphere:
         target_sampling = target_coordinates
