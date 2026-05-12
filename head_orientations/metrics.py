@@ -363,7 +363,8 @@ def _get_subset(sofa, sampling):
 def barumerli_localization(
     template_head_orientations: HeadOrientations,
     target_head_orientations: HeadOrientations,
-    subsampling: pf.Coordinates = None,
+    template_subsampling: pf.Coordinates = None,
+    target_subsampling: pf.Coordinates = None,
     output_dir: str = None,
     repetitions: int = 200,
     save_matrix: bool = False,
@@ -383,7 +384,7 @@ def barumerli_localization(
         else:
             sofa_target = eng.SOFAload(
                 str(target_head_orientations.sofa_file_paths[0]), nargout=1)
-        sofa_target = _get_subset(sofa_target, subsampling)
+        sofa_target = _get_subset(sofa_target, target_subsampling)
         _, feat_target = eng.barumerli2023_NOINTERPOLATION_featureextraction(
             sofa_target,
             'pge',
@@ -410,11 +411,14 @@ def barumerli_localization(
                 sofa_target = \
                     eng.SOFAload(str(target_head_orientations.sofa_file_paths[idx]),
                                 nargout=1)
-            sofa_target = _get_subset(sofa_target, subsampling)
+            sofa_target = _get_subset(sofa_target, target_subsampling)
             _, feat_target = eng.barumerli2023_NOINTERPOLATION_featureextraction(
                 sofa_target,
                 'pge',
                 nargout=2)
+
+        if template_subsampling:
+            sofa_template = _get_subset(sofa_template, template_subsampling)
 
         feat_template, _ = \
             eng.barumerli2023_NOINTERPOLATION_featureextraction(sofa_template,
