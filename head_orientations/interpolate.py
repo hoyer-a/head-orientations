@@ -112,7 +112,7 @@ def interpolate(head_orientations: HeadOrientations,
         target_nm = \
             spharpy.SphericalHarmonics.from_definition(sh_definition,
                                                        target_sampling,
-                                                       inverse_method='pseudo_inverse')
+                                                       inverse_method='auto')
 
         interpolated = pf.matrix_multiplication((target_nm.basis, rotated_nm),
                                                 domain='time',
