@@ -274,8 +274,6 @@ def plot_mean_spectral_difference(head_orientation: HeadOrientations,
     fig, ax = plt.subplots(constrained_layout=True,
                            subplot_kw={"projection": "mollweide"})
     contour = _plot_sd_source_map(ax, source, mean_sdif, cmap, limits_db)
-    ax.set_xlabel("Azimuth in degree")
-    ax.set_ylabel("Elevation in degree")
 
     # add a simple horizontal colorbar
     if contour is not None:
@@ -366,7 +364,7 @@ def plot_localization_1_dof(
     return values
 
 
-def plot_localization_map(
+def plot_localization_scatter(
         metrics: HeadOrientationsMetrics,
         rotation: float = None,
         metric: str = None):
@@ -374,12 +372,6 @@ def plot_localization_map(
     Plot localization metric as Voronoi cells over
     lateral bend / flexion-extension space.
     """
-
-    from scipy.spatial import Voronoi
-    from matplotlib.patches import Polygon
-    from matplotlib.collections import PatchCollection
-    from matplotlib.colors import Normalize
-
     metric_ = getattr(metrics, metric)
     rotation = np.atleast_1d(rotation)
 
@@ -391,33 +383,184 @@ def plot_localization_map(
         lateral_bend = metrics.head_orientations[mask, 0]
         flexex = metrics.head_orientations[mask, 1]
         colors = metric_[mask]
+        fig, ax = plt.subplots(figsize=(7, 6))
+
+        # overlay sample points
+        ax.scatter(
+            lateral_bend,
+            flexex,
+            c=colors,
+            s=10,
+            zorder=10
+        )
+
+
+        ax.set_title(f'{rotation_}° rotation')
+        ax.set_xlabel('Lateral Bend [°]')
+        ax.set_ylabel('Flexion/Extension [°]')
+
+        ax.set_aspect('equal', adjustable='box')
+        ax.grid(True, alpha=0.2)
+
+        plt.tight_layout()
+        plt.show()
+
+
+def plot_localization_map(
+        metrics: HeadOrientationsMetrics,
+        rotation: float = None,
+        metric: str = None,
+        limits: Sequence = None):
+    """
+    Plot localization metric as a Voronoi cell map over
+    lateral bend / flexion-extension space.
+
+    Parameters
+    ----------
+    metrics : HeadOrientationsMetrics
+        Metrics object containing head orientations and metric data.
+    rotation : float, optional
+        Rotation angle(s) to filter by. Can be a scalar or array.
+    metric : str
+        Name of the metric attribute to plot (e.g., 'querr', 'pe_raw').
+    limits : Sequence, optional
+        Value range [vmin, vmax] for the colormap. If None, uses data min/max.
+    """
+
+    import numpy as np
+    import matplotlib.pyplot as plt
+
+    from scipy.spatial import Voronoi
+    from matplotlib.patches import Polygon
+    from matplotlib.collections import PatchCollection
+    from matplotlib.colors import Normalize
+
+    metric_ = getattr(metrics, metric)
+    rotation = np.atleast_1d(rotation)
+
+    # -------------------------------------------------------------------------
+    # helper: reconstruct infinite Voronoi regions into finite polygons
+    # adapted from SciPy cookbook
+    # -------------------------------------------------------------------------
+
+    def voronoi_finite_polygons_2d(vor, radius=None):
+
+        if vor.points.shape[1] != 2:
+            raise ValueError("Requires 2D input")
+
+        new_regions = []
+        new_vertices = vor.vertices.tolist()
+
+        center = vor.points.mean(axis=0)
+
+        if radius is None:
+            radius = np.ptp(vor.points, axis=0).max() * 2
+
+        # map ridge vertices to ridges
+        all_ridges = {}
+
+        for (p1, p2), (v1, v2) in zip(
+                vor.ridge_points,
+                vor.ridge_vertices):
+
+            all_ridges.setdefault(p1, []).append((p2, v1, v2))
+            all_ridges.setdefault(p2, []).append((p1, v1, v2))
+
+        # reconstruct infinite regions
+        for p1, region_idx in enumerate(vor.point_region):
+
+            vertices = vor.regions[region_idx]
+
+            if all(v >= 0 for v in vertices):
+                # finite region
+                new_regions.append(vertices)
+                continue
+
+            ridges = all_ridges[p1]
+
+            new_region = [v for v in vertices if v >= 0]
+
+            for p2, v1, v2 in ridges:
+
+                if v1 >= 0 and v2 >= 0:
+                    continue
+
+                # compute missing endpoint
+                tangent = vor.points[p2] - vor.points[p1]
+                tangent /= np.linalg.norm(tangent)
+
+                normal = np.array([-tangent[1], tangent[0]])
+
+                midpoint = vor.points[[p1, p2]].mean(axis=0)
+
+                direction = np.sign(
+                    np.dot(midpoint - center, normal)
+                ) * normal
+
+                far_point = vor.vertices[
+                    v1 if v1 >= 0 else v2
+                ] + direction * radius
+
+                new_vertices.append(far_point.tolist())
+                new_region.append(len(new_vertices) - 1)
+
+            # sort polygon vertices counterclockwise
+            vs = np.asarray([new_vertices[v] for v in new_region])
+
+            centroid = vs.mean(axis=0)
+
+            angles = np.arctan2(
+                vs[:, 1] - centroid[1],
+                vs[:, 0] - centroid[0]
+            )
+
+            new_region = np.array(new_region)[np.argsort(angles)]
+
+            new_regions.append(new_region.tolist())
+
+        return new_regions, np.asarray(new_vertices)
+
+    # -------------------------------------------------------------------------
+
+    for rotation_ in rotation:
+
+        azi = metrics.head_orientations[:, 2]
+        mask = (azi == rotation_)
+
+        lateral_bend = metrics.head_orientations[mask, 0]
+        flexex = metrics.head_orientations[mask, 1]
+
+        colors = metric_[mask]
 
         points = np.column_stack((lateral_bend, flexex))
 
         # compute Voronoi tessellation
         vor = Voronoi(points)
 
+        # reconstruct finite polygons
+        regions, vertices = voronoi_finite_polygons_2d(vor)
+
         fig, ax = plt.subplots(figsize=(7, 6))
 
         patches = []
-        patch_colors = []
 
-        for point_idx, region_idx in enumerate(vor.point_region):
+        for region in regions:
 
-            region = vor.regions[region_idx]
+            polygon = vertices[region]
 
-            # skip infinite regions
-            if -1 in region or len(region) == 0:
-                continue
+            patches.append(
+                Polygon(polygon, closed=True)
+            )
 
-            polygon = [vor.vertices[i] for i in region]
-
-            patches.append(Polygon(polygon, closed=True))
-            patch_colors.append(colors[point_idx])
+        if limits is None:
+            vmin = np.nanmin(colors)
+            vmax = np.nanmax(colors)
+        else:
+            vmin, vmax = limits
 
         norm = Normalize(
-            vmin=np.nanmin(colors),
-            vmax=np.nanmax(colors)
+            vmin=vmin,
+            vmax=vmax
         )
 
         collection = PatchCollection(
@@ -428,7 +571,7 @@ def plot_localization_map(
             linewidth=0.5
         )
 
-        collection.set_array(np.array(patch_colors))
+        collection.set_array(colors)
 
         ax.add_collection(collection)
 
@@ -441,14 +584,16 @@ def plot_localization_map(
             zorder=10
         )
 
+        margin = 5
+
         ax.set_xlim(
-            lateral_bend.min() - 5,
-            lateral_bend.max() + 5
+            lateral_bend.min() - margin,
+            lateral_bend.max() + margin
         )
 
         ax.set_ylim(
-            flexex.min() - 5,
-            flexex.max() + 5
+            flexex.min() - margin,
+            flexex.max() + margin
         )
 
         ax.set_title(f'{rotation_}° rotation')
