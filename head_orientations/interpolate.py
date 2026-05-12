@@ -75,7 +75,7 @@ def interpolate(head_orientations: HeadOrientations,
     y_nm = \
         spharpy.SphericalHarmonics.from_definition(sh_definition,
                                                    sampling,
-                                                   inverse_method='pseudo_inverse')
+                                                   inverse_method='auto')
     hrirs = head_orientations.hrirs[:, *idx].copy()
 
     # Iterate over head orientations: sh-transform, rotate & interpolate
