@@ -413,7 +413,8 @@ def plot_localization_map(
         metric: str = None,
         limits: Sequence = None,
         cmap: str = 'blue_white_red',
-        rom_fill: Sequence = None):
+        rom_fill: Sequence = None,
+        rom_fill_rotation: Union[float, Sequence] = None):
     """
     Plot localization metric as a Voronoi cell map over
     lateral bend / flexion-extension space.
@@ -428,6 +429,11 @@ def plot_localization_map(
         Name of the metric attribute to plot (e.g., 'querr', 'pe_raw').
     limits : Sequence, optional
         Value range [vmin, vmax] for the colormap. If None, uses data min/max.
+    rom_fill : Sequence, optional
+        Tuple of (bend, flex) arrays defining the ROM region to fill.
+    rom_fill_rotation : float, tuple, optional
+        Rotation angle(s) for which to plot the ROM fill. Can be a scalar or tuple.
+        If None, ROM fill is plotted for all rotations.
     """
 
     import numpy as np
@@ -442,6 +448,10 @@ def plot_localization_map(
     if reference:
         metric_ref = getattr(reference, metric)
     rotation = np.atleast_1d(rotation)
+
+    # Convert rom_fill_rotation to array for consistent handling
+    if rom_fill_rotation is not None:
+        rom_fill_rotation = np.atleast_1d(rom_fill_rotation)
 
     if cmap and cmap == "blue_white_red":
         cmap = mcolors.LinearSegmentedColormap.from_list(
@@ -614,7 +624,8 @@ def plot_localization_map(
             flexex.max() + margin
         )
 
-        if rom_fill:
+        # Plot ROM fill only if this rotation is in rom_fill_rotation
+        if rom_fill and (rom_fill_rotation is None or rotation_ in rom_fill_rotation):
             bend = rom_fill[0]
             flex = rom_fill[1]
             ax.fill(bend, -flex, color='k', alpha=0.125, edgecolor='none')
