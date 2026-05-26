@@ -408,9 +408,12 @@ def plot_localization_scatter(
 
 def plot_localization_map(
         metrics: HeadOrientationsMetrics,
+        reference: HeadOrientationsMetrics = None,
         rotation: float = None,
         metric: str = None,
-        limits: Sequence = None):
+        limits: Sequence = None,
+        cmap: str = 'blue_white_red',
+        rom_fill: Sequence = None):
     """
     Plot localization metric as a Voronoi cell map over
     lateral bend / flexion-extension space.
@@ -436,7 +439,15 @@ def plot_localization_map(
     from matplotlib.colors import Normalize
 
     metric_ = getattr(metrics, metric)
+    if reference:
+        metric_ref = getattr(reference, metric)
     rotation = np.atleast_1d(rotation)
+
+    if cmap and cmap == "blue_white_red":
+        cmap = mcolors.LinearSegmentedColormap.from_list(
+            'blue_white_red',
+            ['blue', 'white', 'red'],
+            N=256)
 
     # -------------------------------------------------------------------------
     # helper: reconstruct infinite Voronoi regions into finite polygons
@@ -523,6 +534,10 @@ def plot_localization_map(
     # -------------------------------------------------------------------------
 
     for rotation_ in rotation:
+        if reference and not np.array_equal(metrics.head_orientations,
+                                            reference.head_orientations):
+            raise ValueError('Reference and metrics must contain same head'
+                             'orientations')
 
         azi = metrics.head_orientations[:, 2]
         mask = (azi == rotation_)
@@ -530,7 +545,10 @@ def plot_localization_map(
         lateral_bend = metrics.head_orientations[mask, 0]
         flexex = metrics.head_orientations[mask, 1]
 
-        colors = metric_[mask]
+        if reference:
+            colors = metric_[mask] - metric_ref[mask]
+        else:
+            colors = metric_[mask]
 
         points = np.column_stack((lateral_bend, flexex))
 
@@ -565,7 +583,7 @@ def plot_localization_map(
 
         collection = PatchCollection(
             patches,
-            cmap='viridis',
+            cmap=cmap,
             norm=norm,
             edgecolor='black',
             linewidth=0.5
@@ -595,6 +613,11 @@ def plot_localization_map(
             flexex.min() - margin,
             flexex.max() + margin
         )
+
+        if rom_fill:
+            bend = rom_fill[0]
+            flex = rom_fill[1]
+            ax.fill(bend, -flex, color='k', alpha=0.125, edgecolor='none')
 
         ax.set_title(f'{rotation_}° rotation')
         ax.set_xlabel('Lateral Bend [°]')
