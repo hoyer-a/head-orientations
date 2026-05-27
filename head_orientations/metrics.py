@@ -12,6 +12,7 @@ import numpy as np
 
 _MATLAB_ENGINE = None
 
+
 class HeadOrientationsMetrics:
     """Container for localization metrics from .mat files or arrays.
 
@@ -461,7 +462,8 @@ def barumerli_localization(
 
 def coloration_mc_kenzie(head_orientations: HeadOrientations,
                          reference: HeadOrientations,
-                         frequency_range: Sequence = (300, 20e3)):
+                         frequency_range: Sequence = (300, 20e3),
+                         output_dir: str = None):
     """"""
     eng = _get_matlab_engine()
     results = []
@@ -473,16 +475,26 @@ def coloration_mc_kenzie(head_orientations: HeadOrientations,
         settings_dict = eng.struct()
 
     hrirs = head_orientations.hrirs
-    source = head_orientations.source_positions
+    # source = head_orientations.source_positions
 
     ref_hrirs = reference.hrirs
     ref_data = np.transpose(ref_hrirs.time.squeeze(axis=0), axes=[2, 0, 1]).copy()
 
     for id in range(head_orientations.n_orientations):
-        data = np.transpose(hrirs.time.squeeze(axis=0), axes=[2, 0, 1]).copy()
+        data = np.transpose(hrirs.time[id], axes=[2, 0, 1]).copy()
         pbc = eng.mckenzie2025(ref_data, data, settings_dict, nargout=1)
 
         pbc = np.asarray(pbc).squeeze()
+
+        if output_dir:
+            orientation = head_orientations.head_orientations[id]
+            filename = f"metrics_bend_{int(orientation[0])}" \
+                f"elev_{int(orientation[1])}" \
+                    f"azim{int(orientation[2])}.mat"
+            filepath = os.path.join(output_dir, filename)
+            sc.io.savemat(filepath, {'pbc': pbc})
+            print(f"saved to {filepath}")
+
         results.append(pbc)
 
     return results
