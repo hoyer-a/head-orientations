@@ -12,6 +12,102 @@ from .utils import spectral_difference, mean_spectral_difference
 from typing import Sequence, Union
 
 
+def _voronoi_finite_polygons_2d(vor, radius=None):
+    """
+    Reconstruct infinite Voronoi regions into finite polygons.
+    Adapted from SciPy cookbook.
+
+    Parameters
+    ----------
+    vor : scipy.spatial.Voronoi
+        Voronoi diagram.
+    radius : float, optional
+        Radius for bounding infinite regions. If None, uses 2x the extent
+        of the points.
+
+    Returns
+    -------
+    new_regions : list
+        List of polygon regions (vertex indices).
+    new_vertices : ndarray
+        Array of vertex coordinates.
+    """
+    if vor.points.shape[1] != 2:
+        raise ValueError("Requires 2D input")
+
+    new_regions = []
+    new_vertices = vor.vertices.tolist()
+
+    center = vor.points.mean(axis=0)
+
+    if radius is None:
+        radius = np.ptp(vor.points, axis=0).max() * 2
+
+    # map ridge vertices to ridges
+    all_ridges = {}
+
+    for (p1, p2), (v1, v2) in zip(
+            vor.ridge_points,
+            vor.ridge_vertices):
+
+        all_ridges.setdefault(p1, []).append((p2, v1, v2))
+        all_ridges.setdefault(p2, []).append((p1, v1, v2))
+
+    # reconstruct infinite regions
+    for p1, region_idx in enumerate(vor.point_region):
+
+        vertices = vor.regions[region_idx]
+
+        if all(v >= 0 for v in vertices):
+            # finite region
+            new_regions.append(vertices)
+            continue
+
+        ridges = all_ridges[p1]
+
+        new_region = [v for v in vertices if v >= 0]
+
+        for p2, v1, v2 in ridges:
+
+            if v1 >= 0 and v2 >= 0:
+                continue
+
+            # compute missing endpoint
+            tangent = vor.points[p2] - vor.points[p1]
+            tangent /= np.linalg.norm(tangent)
+
+            normal = np.array([-tangent[1], tangent[0]])
+
+            midpoint = vor.points[[p1, p2]].mean(axis=0)
+
+            direction = np.sign(
+                np.dot(midpoint - center, normal)
+            ) * normal
+
+            far_point = vor.vertices[
+                v1 if v1 >= 0 else v2
+            ] + direction * radius
+
+            new_vertices.append(far_point.tolist())
+            new_region.append(len(new_vertices) - 1)
+
+        # sort polygon vertices counterclockwise
+        vs = np.asarray([new_vertices[v] for v in new_region])
+
+        centroid = vs.mean(axis=0)
+
+        angles = np.arctan2(
+            vs[:, 1] - centroid[1],
+            vs[:, 0] - centroid[0]
+        )
+
+        new_region = np.array(new_region)[np.argsort(angles)]
+
+        new_regions.append(new_region.tolist())
+
+    return new_regions, np.asarray(new_vertices)
+
+
 def subplot_spectral_difference(head_orientations, reference,
                                 plane='horizontal', ear='left',
                                 db_threshold=None, limits=None,
@@ -460,88 +556,6 @@ def plot_localization_map(
             N=256)
 
     # -------------------------------------------------------------------------
-    # helper: reconstruct infinite Voronoi regions into finite polygons
-    # adapted from SciPy cookbook
-    # -------------------------------------------------------------------------
-
-    def voronoi_finite_polygons_2d(vor, radius=None):
-
-        if vor.points.shape[1] != 2:
-            raise ValueError("Requires 2D input")
-
-        new_regions = []
-        new_vertices = vor.vertices.tolist()
-
-        center = vor.points.mean(axis=0)
-
-        if radius is None:
-            radius = np.ptp(vor.points, axis=0).max() * 2
-
-        # map ridge vertices to ridges
-        all_ridges = {}
-
-        for (p1, p2), (v1, v2) in zip(
-                vor.ridge_points,
-                vor.ridge_vertices):
-
-            all_ridges.setdefault(p1, []).append((p2, v1, v2))
-            all_ridges.setdefault(p2, []).append((p1, v1, v2))
-
-        # reconstruct infinite regions
-        for p1, region_idx in enumerate(vor.point_region):
-
-            vertices = vor.regions[region_idx]
-
-            if all(v >= 0 for v in vertices):
-                # finite region
-                new_regions.append(vertices)
-                continue
-
-            ridges = all_ridges[p1]
-
-            new_region = [v for v in vertices if v >= 0]
-
-            for p2, v1, v2 in ridges:
-
-                if v1 >= 0 and v2 >= 0:
-                    continue
-
-                # compute missing endpoint
-                tangent = vor.points[p2] - vor.points[p1]
-                tangent /= np.linalg.norm(tangent)
-
-                normal = np.array([-tangent[1], tangent[0]])
-
-                midpoint = vor.points[[p1, p2]].mean(axis=0)
-
-                direction = np.sign(
-                    np.dot(midpoint - center, normal)
-                ) * normal
-
-                far_point = vor.vertices[
-                    v1 if v1 >= 0 else v2
-                ] + direction * radius
-
-                new_vertices.append(far_point.tolist())
-                new_region.append(len(new_vertices) - 1)
-
-            # sort polygon vertices counterclockwise
-            vs = np.asarray([new_vertices[v] for v in new_region])
-
-            centroid = vs.mean(axis=0)
-
-            angles = np.arctan2(
-                vs[:, 1] - centroid[1],
-                vs[:, 0] - centroid[0]
-            )
-
-            new_region = np.array(new_region)[np.argsort(angles)]
-
-            new_regions.append(new_region.tolist())
-
-        return new_regions, np.asarray(new_vertices)
-
-    # -------------------------------------------------------------------------
 
     for rotation_ in rotation:
         if reference and not np.array_equal(metrics.head_orientations,
@@ -566,7 +580,7 @@ def plot_localization_map(
         vor = Voronoi(points)
 
         # reconstruct finite polygons
-        regions, vertices = voronoi_finite_polygons_2d(vor)
+        regions, vertices = _voronoi_finite_polygons_2d(vor)
 
         fig, ax = plt.subplots(figsize=(7, 6))
 
@@ -628,7 +642,7 @@ def plot_localization_map(
         if rom_fill and (rom_fill_rotation is None or rotation_ in rom_fill_rotation):
             bend = rom_fill[0]
             flex = rom_fill[1]
-            ax.fill(bend, -flex, color='k', alpha=0.125, edgecolor='none')
+            ax.fill(bend, -flex, color='k', alpha=0.25, edgecolor='none')
 
         ax.set_title(f'{rotation_}° rotation')
         ax.set_xlabel('Lateral Bend [°]')
@@ -642,3 +656,532 @@ def plot_localization_map(
 
         plt.tight_layout()
         plt.show()
+
+
+def plot_localization_map_subplots(
+        metrics: HeadOrientationsMetrics,
+        reference: HeadOrientationsMetrics = None,
+        rotation: float = None,
+        metric: str = None,
+        limits: Sequence = None,
+        cmap: str = 'blue_white_red',
+        rom_fill: Sequence = None,
+        rom_fill_rotation: Union[float, Sequence] = None,
+        cols: int = 4,
+        figsize: Sequence = None):
+    """
+    Plot localization metric as Voronoi cell maps in a grid of subplots,
+    one subplot per rotation value.
+
+    Parameters
+    ----------
+    metrics : HeadOrientationsMetrics
+        Metrics object containing head orientations and metric data.
+    reference : HeadOrientationsMetrics, optional
+        Reference metrics to compute difference against. If provided,
+        colors will represent metric_ - metric_ref.
+    rotation : float or array-like, optional
+        Rotation angle(s) to plot. If None, all unique rotation values are plotted.
+    metric : str
+        Name of the metric attribute to plot (e.g., 'querr', 'pe_raw').
+    limits : Sequence, optional
+        Value range [vmin, vmax] for the colormap. If None, uses data min/max.
+    cmap : str, optional
+        Colormap name. Default is 'blue_white_red'.
+    rom_fill : Sequence, optional
+        Tuple of (bend, flex) arrays defining the ROM region to fill.
+    rom_fill_rotation : float or Sequence, optional
+        Rotation angle(s) for which to plot the ROM fill. If None, plots for all.
+    cols : int, optional
+        Number of columns in the subplot grid. Default is 4.
+    figsize : Sequence, optional
+        Figure size as (width, height). If None, auto-calculated based on grid size.
+    """
+    from scipy.spatial import Voronoi
+    from matplotlib.patches import Polygon
+    from matplotlib.collections import PatchCollection
+    from matplotlib.colors import Normalize
+
+    metric_ = getattr(metrics, metric)
+    if reference:
+        metric_ref = getattr(reference, metric)
+
+    # Get all unique rotation values if not specified
+    if rotation is None:
+        rotation = np.unique(metrics.head_orientations[:, 2])
+    else:
+        rotation = np.atleast_1d(rotation)
+
+    # Convert rom_fill_rotation to array for consistent handling
+    if rom_fill_rotation is not None:
+        rom_fill_rotation = np.atleast_1d(rom_fill_rotation)
+
+    if cmap and cmap == "blue_white_red":
+        cmap_obj = mcolors.LinearSegmentedColormap.from_list(
+            'blue_white_red',
+            ['blue', 'white', 'red'],
+            N=256)
+    else:
+        cmap_obj = cmap
+
+    # Calculate number of rows needed
+    n_plots = len(rotation)
+    rows = int(np.ceil(n_plots / cols))
+
+    # Calculate figure size if not provided
+    if figsize is None:
+        figsize = (cols * 5, rows * 4.5)
+
+    # Create figure with subplots
+    fig = plt.figure(figsize=figsize)
+    gs = GridSpec(rows, cols, figure=fig, hspace=0.35, wspace=0.15)
+
+    # Collect all colors for global normalization if needed
+    all_colors = []
+    plot_data = []
+
+    if reference and not np.array_equal(metrics.head_orientations,
+                                        reference.head_orientations):
+        raise ValueError('Reference and metrics must contain same head'
+                         'orientations')
+
+    # First pass: collect data for all rotations
+    for rotation_ in rotation:
+        azi = metrics.head_orientations[:, 2]
+        mask = (azi == rotation_)
+
+        lateral_bend = metrics.head_orientations[mask, 0]
+        flexex = metrics.head_orientations[mask, 1]
+
+        if reference:
+            colors = metric_[mask] - metric_ref[mask]
+        else:
+            colors = metric_[mask]
+
+        all_colors.extend(colors)
+
+        points = np.column_stack((lateral_bend, flexex))
+        vor = Voronoi(points)
+        regions, vertices = _voronoi_finite_polygons_2d(vor)
+
+        plot_data.append({
+            'rotation': rotation_,
+            'lateral_bend': lateral_bend,
+            'flexex': flexex,
+            'colors': colors,
+            'regions': regions,
+            'vertices': vertices,
+        })
+
+    # Determine global color limits
+    if limits is None:
+        vmin = np.nanmin(all_colors)
+        vmax = np.nanmax(all_colors)
+    else:
+        vmin, vmax = limits
+
+    norm = Normalize(vmin=vmin, vmax=vmax)
+
+    # Second pass: create subplots
+    for idx, data in enumerate(plot_data):
+        row = idx // cols
+        col = idx % cols
+
+        ax = fig.add_subplot(gs[row, col])
+
+        rotation_ = data['rotation']
+        lateral_bend = data['lateral_bend']
+        flexex = data['flexex']
+        colors = data['colors']
+        regions = data['regions']
+        vertices = data['vertices']
+
+        patches = []
+        for region in regions:
+            polygon = vertices[region]
+            patches.append(Polygon(polygon, closed=True))
+
+        collection = PatchCollection(
+            patches,
+            cmap=cmap_obj,
+            norm=norm,
+            edgecolor='black',
+            linewidth=0.5
+        )
+        collection.set_array(colors)
+        ax.add_collection(collection)
+
+        # overlay sample points
+        ax.scatter(
+            lateral_bend,
+            flexex,
+            c='black',
+            s=10,
+            zorder=10
+        )
+
+        margin = 5
+        ax.set_xlim(
+            lateral_bend.min() - margin,
+            lateral_bend.max() + margin
+        )
+        ax.set_ylim(
+            flexex.min() - margin,
+            flexex.max() + margin
+        )
+
+        # Plot ROM fill only if this rotation is in rom_fill_rotation
+        if rom_fill and (rom_fill_rotation is None or rotation_ in rom_fill_rotation):
+            bend = rom_fill[0]
+            flex = rom_fill[1]
+            ax.fill(bend, -flex, color='k', alpha=0.25, edgecolor='none')
+
+        ax.set_title(f'{rotation_}° rotation', fontsize=11, fontweight='bold')
+        ax.set_xlabel('Lateral Bend [°]', fontsize=10)
+        ax.set_ylabel('Flexion/Extension [°]', fontsize=10)
+        ax.set_aspect('equal', adjustable='box')
+        ax.grid(True, alpha=0.2)
+
+    # Add colorbar to the right of the figure
+    cbar_ax = fig.add_axes([0.92, 0.15, 0.02, 0.7])
+    cbar = fig.colorbar(
+        plt.cm.ScalarMappable(norm=norm, cmap=cmap_obj),
+        cax=cbar_ax
+    )
+    cbar.set_label(metric, fontsize=10)
+
+    plt.show()
+
+
+def plot_coloration_map(
+        metrics: HeadOrientationsMetrics,
+        rotation: float = None,
+        limits: Sequence = None,
+        cmap: str = 'viridis',
+        rom_fill: Sequence = None,
+        rom_fill_rotation: Union[float, Sequence] = None):
+    """
+    Plot coloration metric (pbc averaged across source positions) as a Voronoi
+    cell map over lateral bend / flexion-extension space.
+
+    Parameters
+    ----------
+    metrics : HeadOrientationsMetrics
+        Metrics object containing head orientations and pbc data per source position.
+    rotation : float, optional
+        Rotation angle(s) to filter by. Can be a scalar or array.
+    limits : Sequence, optional
+        Value range [vmin, vmax] for the colormap. If None, uses data min/max.
+    cmap : str, optional
+        Colormap to use. Default is 'viridis'.
+    rom_fill : Sequence, optional
+        Tuple of (bend, flex) arrays defining the ROM region to fill.
+    rom_fill_rotation : float, tuple, optional
+        Rotation angle(s) for which to plot the ROM fill. Can be a scalar or tuple.
+        If None, ROM fill is plotted for all rotations.
+    """
+
+    import numpy as np
+    import matplotlib.pyplot as plt
+
+    from scipy.spatial import Voronoi
+    from matplotlib.patches import Polygon
+    from matplotlib.collections import PatchCollection
+    from matplotlib.colors import Normalize
+
+    # Get pbc data and average across source positions
+    pbc = metrics.pbc  # Shape: (n_orientations, n_source_positions)
+    if pbc.ndim > 1:
+        # Average across source positions
+        colors_all = np.mean(pbc, axis=1)
+    else:
+        colors_all = pbc
+
+    rotation = np.atleast_1d(rotation)
+
+    # Convert rom_fill_rotation to array for consistent handling
+    if rom_fill_rotation is not None:
+        rom_fill_rotation = np.atleast_1d(rom_fill_rotation)
+
+    # Use specified colormap
+    if isinstance(cmap, str):
+        cmap_obj = plt.get_cmap(cmap)
+    else:
+        cmap_obj = cmap
+
+    # -------------------------------------------------------------------------
+
+    for rotation_ in rotation:
+        azi = metrics.head_orientations[:, 2]
+        mask = (azi == rotation_)
+
+        lateral_bend = metrics.head_orientations[mask, 0]
+        flexex = metrics.head_orientations[mask, 1]
+
+        colors = colors_all[mask]
+
+        points = np.column_stack((lateral_bend, flexex))
+
+        # compute Voronoi tessellation
+        vor = Voronoi(points)
+
+        # reconstruct finite polygons
+        regions, vertices = _voronoi_finite_polygons_2d(vor)
+
+        fig, ax = plt.subplots(figsize=(7, 6))
+
+        patches = []
+
+        for region in regions:
+
+            polygon = vertices[region]
+
+            patches.append(
+                Polygon(polygon, closed=True)
+            )
+
+        if limits is None:
+            vmin = np.nanmin(colors)
+            vmax = np.nanmax(colors)
+        else:
+            vmin, vmax = limits
+
+        norm = Normalize(
+            vmin=vmin,
+            vmax=vmax
+        )
+
+        collection = PatchCollection(
+            patches,
+            cmap=cmap_obj,
+            norm=norm,
+            edgecolor='black',
+            linewidth=0.5
+        )
+
+        collection.set_array(colors)
+
+        ax.add_collection(collection)
+
+        # overlay sample points
+        ax.scatter(
+            lateral_bend,
+            flexex,
+            c='black',
+            s=10,
+            zorder=10
+        )
+
+        margin = 5
+
+        ax.set_xlim(
+            lateral_bend.min() - margin,
+            lateral_bend.max() + margin
+        )
+
+        ax.set_ylim(
+            flexex.min() - margin,
+            flexex.max() + margin
+        )
+
+        # Plot ROM fill only if this rotation is in rom_fill_rotation
+        if rom_fill and (rom_fill_rotation is None or rotation_ in rom_fill_rotation):
+            bend = rom_fill[0]
+            flex = rom_fill[1]
+            ax.fill(bend, -flex, color='k', alpha=0.25, edgecolor='none')
+
+        ax.set_title(f'{rotation_}° rotation')
+        ax.set_xlabel('Lateral Bend [°]')
+        ax.set_ylabel('Flexion/Extension [°]')
+
+        ax.set_aspect('equal', adjustable='box')
+        ax.grid(True, alpha=0.2)
+
+        cbar = fig.colorbar(collection, ax=ax)
+        cbar.set_label('Coloration (PBC)')
+
+        plt.tight_layout()
+        plt.show()
+
+
+def plot_coloration_map_subplots(
+        metrics: HeadOrientationsMetrics,
+        rotation: float = None,
+        limits: Sequence = None,
+        cmap: str = 'viridis',
+        rom_fill: Sequence = None,
+        rom_fill_rotation: Union[float, Sequence] = None,
+        cols: int = 4,
+        figsize: Sequence = None):
+    """
+    Plot coloration metric (pbc averaged across source positions) as Voronoi cell
+    maps in a grid of subplots, one subplot per rotation value.
+
+    Parameters
+    ----------
+    metrics : HeadOrientationsMetrics
+        Metrics object containing head orientations and pbc data per source position.
+    rotation : float or array-like, optional
+        Rotation angle(s) to plot. If None, all unique rotation values are plotted.
+    limits : Sequence, optional
+        Value range [vmin, vmax] for the colormap. If None, uses data min/max.
+    cmap : str, optional
+        Colormap to use. Default is 'viridis'.
+    rom_fill : Sequence, optional
+        Tuple of (bend, flex) arrays defining the ROM region to fill.
+    rom_fill_rotation : float or Sequence, optional
+        Rotation angle(s) for which to plot the ROM fill. If None, plots for all.
+    cols : int, optional
+        Number of columns in the subplot grid. Default is 4.
+    figsize : Sequence, optional
+        Figure size as (width, height). If None, auto-calculated based on grid size.
+    """
+    from scipy.spatial import Voronoi
+    from matplotlib.patches import Polygon
+    from matplotlib.collections import PatchCollection
+    from matplotlib.colors import Normalize
+
+    # Get pbc data and average across source positions
+    pbc = metrics.pbc  # Shape: (n_orientations, n_source_positions)
+    if pbc.ndim > 1:
+        # Average across source positions
+        colors_all = np.mean(pbc, axis=1)
+    else:
+        colors_all = pbc
+
+    # Get all unique rotation values if not specified
+    if rotation is None:
+        rotation = np.unique(metrics.head_orientations[:, 2])
+    else:
+        rotation = np.atleast_1d(rotation)
+
+    # Convert rom_fill_rotation to array for consistent handling
+    if rom_fill_rotation is not None:
+        rom_fill_rotation = np.atleast_1d(rom_fill_rotation)
+
+    # Use specified colormap
+    if isinstance(cmap, str):
+        cmap_obj = plt.get_cmap(cmap)
+    else:
+        cmap_obj = cmap
+
+    # Calculate number of rows needed
+    n_plots = len(rotation)
+    rows = int(np.ceil(n_plots / cols))
+
+    # Calculate figure size if not provided
+    if figsize is None:
+        figsize = (cols * 5, rows * 4.5)
+
+    # Create figure with subplots
+    fig = plt.figure(figsize=figsize)
+    gs = GridSpec(rows, cols, figure=fig, hspace=0.35, wspace=0.15)
+
+    # Collect all colors for global normalization if needed
+    all_colors = []
+    plot_data = []
+
+    # First pass: collect data for all rotations
+    for rotation_ in rotation:
+        azi = metrics.head_orientations[:, 2]
+        mask = (azi == rotation_)
+
+        lateral_bend = metrics.head_orientations[mask, 0]
+        flexex = metrics.head_orientations[mask, 1]
+
+        colors = colors_all[mask]
+
+        all_colors.extend(colors)
+
+        points = np.column_stack((lateral_bend, flexex))
+        vor = Voronoi(points)
+        regions, vertices = _voronoi_finite_polygons_2d(vor)
+
+        plot_data.append({
+            'rotation': rotation_,
+            'lateral_bend': lateral_bend,
+            'flexex': flexex,
+            'colors': colors,
+            'regions': regions,
+            'vertices': vertices,
+        })
+
+    # Determine global color limits
+    if limits is None:
+        vmin = np.nanmin(all_colors)
+        vmax = np.nanmax(all_colors)
+    else:
+        vmin, vmax = limits
+
+    norm = Normalize(vmin=vmin, vmax=vmax)
+
+    # Second pass: create subplots
+    for idx, data in enumerate(plot_data):
+        row = idx // cols
+        col = idx % cols
+
+        ax = fig.add_subplot(gs[row, col])
+
+        rotation_ = data['rotation']
+        lateral_bend = data['lateral_bend']
+        flexex = data['flexex']
+        colors = data['colors']
+        regions = data['regions']
+        vertices = data['vertices']
+
+        patches = []
+        for region in regions:
+            polygon = vertices[region]
+            patches.append(Polygon(polygon, closed=True))
+
+        collection = PatchCollection(
+            patches,
+            cmap=cmap_obj,
+            norm=norm,
+            edgecolor='black',
+            linewidth=0.5
+        )
+        collection.set_array(colors)
+        ax.add_collection(collection)
+
+        # overlay sample points
+        ax.scatter(
+            lateral_bend,
+            flexex,
+            c='black',
+            s=10,
+            zorder=10
+        )
+
+        margin = 5
+        ax.set_xlim(
+            lateral_bend.min() - margin,
+            lateral_bend.max() + margin
+        )
+        ax.set_ylim(
+            flexex.min() - margin,
+            flexex.max() + margin
+        )
+
+        # Plot ROM fill only if this rotation is in rom_fill_rotation
+        if rom_fill and (rom_fill_rotation is None or rotation_ in rom_fill_rotation):
+            bend = rom_fill[0]
+            flex = rom_fill[1]
+            ax.fill(bend, -flex, color='k', alpha=0.25, edgecolor='none')
+
+        ax.set_title(f'{rotation_}° rotation', fontsize=11, fontweight='bold')
+        ax.set_xlabel('Lateral Bend [°]', fontsize=10)
+        ax.set_ylabel('Flexion/Extension [°]', fontsize=10)
+        ax.set_aspect('equal', adjustable='box')
+        ax.grid(True, alpha=0.2)
+
+    # Add colorbar to the right of the figure
+    cbar_ax = fig.add_axes([0.92, 0.15, 0.02, 0.7])
+    cbar = fig.colorbar(
+        plt.cm.ScalarMappable(norm=norm, cmap=cmap_obj),
+        cax=cbar_ax
+    )
+    cbar.set_label('Coloration (PBC)', fontsize=10)
+
+    plt.show()
+
