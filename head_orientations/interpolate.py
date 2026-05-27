@@ -136,7 +136,41 @@ def interpolate_sh(head_orientations: HeadOrientations,
 
 def interpolate_barycentric(head_orientations: HeadOrientations,
                             target_coordinates: pf.Coordinates):
-    pass
+    """
+    Interpolate HRIRs using barycentric (VBAP) interpolation.
+
+    Parameters
+    ----------
+    head_orientations : HeadOrientations
+        Head orientation object containing HRIRs and source positions.
+        Must contain a single head orientation.
+    target_coordinates : pf.Coordinates
+        Target spatial coordinates for interpolation.
+
+    Returns
+    -------
+    HeadOrientations
+        Interpolated head orientation with HRIRs at target coordinates.
+
+    Raises
+    ------
+    ValueError
+        If head_orientations contains more than one head orientation.
+    """
+    if head_orientations.n_orientations != 1:
+        raise ValueError("Interpolation can only be performed on single"
+                         "head orientation")
+
+    grid = head_orientations.source_positions
+    hrirs = head_orientations.hrirs
+
+    weights = vbap_weights(grid, target_coordinates)
+    interp_hrir = np.einsum('sp,peh->seh', weights, hrirs[0].time)
+
+    interp = pf.Signal(interp_hrir, hrirs.sampling_rate)
+
+    return HeadOrientations(interp[None, ...], target_coordinates,
+                            head_orientations.head_orientations)
 
 
 def interpolate_head_orientation(head_orientation_1: HeadOrientations,
