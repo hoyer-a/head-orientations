@@ -1,0 +1,119 @@
+name: Update Review Status
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened]
+  pull_request_review:
+    types: [submitted]
+  workflow_dispatch:
+  schedule:
+    # Run every 10 minutes to catch reaction changes (GitHub has no reaction event trigger)
+    - cron: '*/10 * * * *'
+
+permissions:
+  statuses: write
+  pull-requests: read
+  issues: read
+
+jobs:
+  update-status:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Update review status checks
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const REQUIRED_REACTORS = 2;
+
+            const STEPS = [
+              { marker: '<!-- review-step: code -->',  context: 'review/code',  label: 'Code Review'  },
+              { marker: '<!-- review-step: tests -->', context: 'review/tests', label: 'Test Review'  },
+              { marker: '<!-- review-step: docs -->',  context: 'review/docs',  label: 'Doc Review'   },
+            ];
+
+            // Determine which PRs to evaluate
+            let pullRequests = [];
+
+            if (context.eventName === 'pull_request' || context.eventName === 'pull_request_review') {
+              const pr = context.payload.pull_request || context.payload.review.pull_request;
+              pullRequests = [{ number: pr.number, sha: pr.head.sha }];
+            } else {
+              // schedule or workflow_dispatch: check all open PRs
+              const { data: openPRs } = await github.rest.pulls.list({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                state: 'open',
+                per_page: 100,
+              });
+              pullRequests = openPRs.map(pr => ({ number: pr.number, sha: pr.head.sha }));
+            }
+
+            for (const { number: prNumber, sha: headSha } of pullRequests) {
+              // Fetch all comments on the PR (issues endpoint covers PR comments)
+              let comments = [];
+              let page = 1;
+              while (true) {
+                const { data } = await github.rest.issues.listComments({
+                  owner: context.repo.owner,
+                  repo: context.repo.repo,
+                  issue_number: prNumber,
+                  per_page: 100,
+                  page,
+                });
+                comments = comments.concat(data);
+                if (data.length < 100) break;
+                page++;
+              }
+
+              for (const step of STEPS) {
+                // Find the comment that contains the review-step marker
+                const comment = comments.find(c => c.body && c.body.includes(step.marker));
+
+                if (!comment) {
+                  // Comment not yet posted; set status to pending
+                  await github.rest.repos.createCommitStatus({
+                    owner: context.repo.owner,
+                    repo: context.repo.repo,
+                    sha: headSha,
+                    state: 'pending',
+                    context: step.context,
+                    description: `Waiting for review comments to be posted`,
+                  });
+                  continue;
+                }
+
+                // Fetch +1 reactions for this comment
+                let reactions = [];
+                let reactPage = 1;
+                while (true) {
+                  const { data } = await github.rest.reactions.listForIssueComment({
+                    owner: context.repo.owner,
+                    repo: context.repo.repo,
+                    comment_id: comment.id,
+                    content: '+1',
+                    per_page: 100,
+                    page: reactPage,
+                  });
+                  reactions = reactions.concat(data);
+                  if (data.length < 100) break;
+                  reactPage++;
+                }
+
+                // Count unique reactors by login
+                const uniqueReactors = new Set(reactions.map(r => r.user.login));
+                const count = uniqueReactors.size;
+                const state = count >= REQUIRED_REACTORS ? 'success' : 'pending';
+                const description = `${count}/${REQUIRED_REACTORS} reviewers completed`;
+
+                await github.rest.repos.createCommitStatus({
+                  owner: context.repo.owner,
+                  repo: context.repo.repo,
+                  sha: headSha,
+                  state,
+                  context: step.context,
+                  description,
+                });
+
+                core.info(`PR #${prNumber} ${step.context}: ${description} (${state})`);
+              }
+            }
