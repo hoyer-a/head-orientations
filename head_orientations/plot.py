@@ -253,7 +253,7 @@ def subplot_spectral_difference(head_orientations, reference,
 
 
 def plot_single_spectral_difference(ho1: HeadOrientations,
-                                    ho2: HeadOrientations,
+                                    ho2: HeadOrientations = None,
                                     plane: str = 'horizontal',
                                     ear: str = 'left',
                                     db_threshold: float | None = None,
@@ -300,41 +300,44 @@ def plot_single_spectral_difference(ho1: HeadOrientations,
         raise ValueError("plane must be 'median', 'frontal', or 'horizontal'.")
 
     hrirs1 = ho1.hrirs
-    hrirs2 = ho2.hrirs
-
     idx_1 = ho1.source_positions.find_nearest(coords2find)[0]
-    idx_2 = ho2.source_positions.find_nearest(coords2find)[0]
-
     hrirs1 = hrirs1[:, *idx_1]
-    hrirs2 = hrirs2[:, *idx_2]
 
-    # plot
-    spec_diff = spectral_difference(hrirs1, hrirs2)
+    if ho2:
+        hrirs2 = ho2.hrirs
+        idx_2 = ho2.source_positions.find_nearest(coords2find)[0]
+        hrirs2 = hrirs2[:, *idx_2]
 
-    if db_threshold:
-        db, prefix = \
-            pf.dsp.decibel(spec_diff, return_prefix=True)
+        # plot
+        spec_diff = spectral_difference(hrirs1, hrirs2)
 
-        idx_threshold = np.where(
-            (db > -db_threshold) & (db < db_threshold)
-        )
-        db[idx_threshold] = 0
-        spec_diff = \
-            pf.FrequencyData(10 ** (db / prefix), hrirs1.frequencies)
+        if db_threshold:
+            db, prefix = \
+                pf.dsp.decibel(spec_diff, return_prefix=True)
 
-    spec_diff = spec_diff[0, ...]
-    print(spec_diff)
-    print(angles.shape)
+            idx_threshold = np.where(
+                (db > -db_threshold) & (db < db_threshold)
+            )
+            db[idx_threshold] = 0
+            spec_diff = \
+                pf.FrequencyData(10 ** (db / prefix), hrirs1.frequencies)
+
+        data = spec_diff[0, ...]
+    else:
+        data = hrirs1[0, ...]
 
     ax = pf.plot.freq_2d(
-            spec_diff[:, ear_id].flatten(),
+            data[:, ear_id].flatten(),
             indices=np.rad2deg(angles),
             orientation='horizontal',
             cmap=cmap,
             vmin=vmin,
             vmax=vmax,
         )[0]
+
+    b, e, a = ho1.head_orientations[0]
     ax[0].set_ylabel('angle in degree')
+    ax[0].set_title(f"bend: {b}; elev: {e}, azimuth: {a}")
     plt.show()
 
 
@@ -493,7 +496,7 @@ def plot_localization_scatter(
 
         ax.set_title(f'{rotation_}° rotation')
         ax.set_xlabel('Lateral Bend [°]')
-        ax.set_ylabel('Flexion/Extension [°]')
+        ax.set_ylabel('Extension/Flexion [°]')
 
         ax.set_aspect('equal', adjustable='box')
         ax.grid(True, alpha=0.2)
@@ -642,11 +645,11 @@ def plot_localization_map(
         if rom_fill and (rom_fill_rotation is None or rotation_ in rom_fill_rotation):
             bend = rom_fill[0]
             flex = rom_fill[1]
-            ax.fill(bend, -flex, color='k', alpha=0.25, edgecolor='none')
+            ax.fill(bend, -flex, color='none', edgecolor='k')
 
         ax.set_title(f'{rotation_}° rotation')
         ax.set_xlabel('Lateral Bend [°]')
-        ax.set_ylabel('Flexion/Extension [°]')
+        ax.set_ylabel('Extension/Flexion [°]')
 
         ax.set_aspect('equal', adjustable='box')
         ax.grid(True, alpha=0.2)
@@ -834,11 +837,11 @@ def plot_localization_map_subplots(
         if rom_fill and (rom_fill_rotation is None or rotation_ in rom_fill_rotation):
             bend = rom_fill[0]
             flex = rom_fill[1]
-            ax.fill(bend, -flex, color='k', alpha=0.25, edgecolor='none')
+            ax.fill(bend, -flex, color='none', edgecolor='k')
 
         ax.set_title(f'{rotation_}° rotation', fontsize=11, fontweight='bold')
         ax.set_xlabel('Lateral Bend [°]', fontsize=10)
-        ax.set_ylabel('Flexion/Extension [°]', fontsize=10)
+        ax.set_ylabel('Extension/Flexion [°]', fontsize=10)
         ax.set_aspect('equal', adjustable='box')
         ax.grid(True, alpha=0.2)
 
@@ -988,11 +991,11 @@ def plot_coloration_map(
         if rom_fill and (rom_fill_rotation is None or rotation_ in rom_fill_rotation):
             bend = rom_fill[0]
             flex = rom_fill[1]
-            ax.fill(bend, -flex, color='k', alpha=0.25, edgecolor='none')
+            ax.fill(bend, -flex, color='none', edgecolor='k')
 
         ax.set_title(f'{rotation_}° rotation')
         ax.set_xlabel('Lateral Bend [°]')
-        ax.set_ylabel('Flexion/Extension [°]')
+        ax.set_ylabel('Extension/Flexion [°]')
 
         ax.set_aspect('equal', adjustable='box')
         ax.grid(True, alpha=0.2)
@@ -1167,11 +1170,11 @@ def plot_coloration_map_subplots(
         if rom_fill and (rom_fill_rotation is None or rotation_ in rom_fill_rotation):
             bend = rom_fill[0]
             flex = rom_fill[1]
-            ax.fill(bend, -flex, color='k', alpha=0.25, edgecolor='none')
+            ax.fill(bend, -flex, color='none', edgecolor='k')
 
         ax.set_title(f'{rotation_}° rotation', fontsize=11, fontweight='bold')
         ax.set_xlabel('Lateral Bend [°]', fontsize=10)
-        ax.set_ylabel('Flexion/Extension [°]', fontsize=10)
+        ax.set_ylabel('Extension/Flexion [°]', fontsize=10)
         ax.set_aspect('equal', adjustable='box')
         ax.grid(True, alpha=0.2)
 
