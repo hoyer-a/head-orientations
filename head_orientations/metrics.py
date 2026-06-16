@@ -500,3 +500,79 @@ def coloration_mc_kenzie(head_orientations: HeadOrientations,
     return results
 
 
+def baumgartner_localization(template_head_orientations: HeadOrientations,
+                             target_head_orientations: HeadOrientations,
+                             output_dir: str = None,
+                             spectral_weighting: bool = False,
+                             gamma = 6.0,
+                             S = 1.0):
+    """"""
+    eng = _get_matlab_engine()
+
+    angles = np.linspace(0, 2*np.pi, 180, endpoint=False)
+    sagittal_plane = pf.Coordinates.from_spherical_elevation(0, angles, 1)
+
+    source = template_head_orientations.source_positions
+    src_idx = source.find_nearest(sagittal_plane)[0]
+
+    if target_head_orientations.n_orientations != 1 \
+        and target_head_orientations.n_orientations != \
+            template_head_orientations.n_orientations:
+        raise ValueError("Don't do this")
+
+    if target_head_orientations.n_orientations == 1:
+        print("single target orientation")
+        hrirs_target = target_head_orientations.hrirs[0]
+        target = np.ascontiguousarray(
+            np.moveaxis(hrirs_target.time, 2, 0)[:, *src_idx, :])
+
+    results = []
+
+    for idx in range(template_head_orientations.n_orientations):
+        # If the template has beed interpolated before, there is no
+        # corresponding sofa file, so we create a temporary one
+        hrirs_template = template_head_orientations[idx].hrirs[0]
+        template = np.ascontiguousarray(
+            np.moveaxis(hrirs_template.time, 2, 0)[:, *src_idx, :])
+
+        if target_head_orientations.n_orientations != 1:
+            hrirs_target = target_head_orientations[idx].hrirs[0]
+            target = np.ascontiguousarray(
+                np.moveaxis(hrirs_target.time, 2, 0)[:, *src_idx, :])
+
+        if spectral_weighting:
+            err, _ = eng.baumgartner2014(target, template,
+                                         'fs', hrirs_template.sampling_rate,
+                                        'fsstim', hrirs_template.sampling_rate,
+                                        'polsamp', np.rad2deg(angles),
+                                        'tang', np.rad2deg(angles),
+                                        'spectw', spectral_weighting,
+                                        'gamma', gamma,
+                                        'S', S,
+                                        'QE_PE_EB', nargout=2)
+        else:
+            err, _ = eng.baumgartner2014(target, template,
+                                        'fs', hrirs_template.sampling_rate,
+                                        'fsstim', hrirs_template.sampling_rate,
+                                        'polsamp', np.rad2deg(angles),
+                                        'tang', np.rad2deg(angles),
+                                        'gamma', gamma,
+                                        'S', S,
+                                        'QE_PE_EB', nargout=2)
+
+        metrics = {'querr': err['qe'],
+                   'rmsP': err['pe'],
+                   'pb': err['pb']}
+
+        if output_dir:
+            orientation = template_head_orientations.head_orientations[idx]
+            filename = f"metrics_bend_{int(orientation[0])}" \
+                f"elev_{int(orientation[1])}" \
+                    f"azim{int(orientation[2])}.mat"
+            filepath = os.path.join(output_dir, filename)
+            sc.io.savemat(filepath, metrics)
+            print(f"saved to {filepath}")
+
+        results.append(metrics)
+
+    return results

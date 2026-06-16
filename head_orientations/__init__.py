@@ -16,7 +16,7 @@ from .head_orientation_class import HeadOrientationsDataset, HeadOrientations
 from .utils import find_orientation_directory
 from .dsp import far_field_correction, directional_transfer_function
 from .interpolate import interpolate_sh
-from .metrics import HeadOrientationsMetrics, barumerli_localization
+from .metrics import HeadOrientationsMetrics, barumerli_localization, baumgartner_localization
 from .plot import (
     subplot_spectral_difference,
     plot_single_spectral_difference,
@@ -31,6 +31,8 @@ __all__ = [
     "interpolate_sh",
     "HeadOrientationsMetrics",
     "barumerli_localization",
+    "baumgartner_localization",
+    "HeadOrientationsData",
     "subplot_spectral_difference",
     "plot_single_spectral_difference",
 ]
