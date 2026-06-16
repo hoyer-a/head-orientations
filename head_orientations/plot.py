@@ -428,15 +428,62 @@ def _plot_sd_source_map(ax, source, values, cmap, limits_db):
 def plot_localization_1_dof(
     metrics: Union[HeadOrientationsMetrics, Sequence[HeadOrientationsMetrics]],
     metric: str,
-    limits: Sequence = None):
+    limits: Sequence = None,
+    ax=None,
+    label: str = None,
+    marker: str = 'x',
+    color=None,
+    **kwargs):
     """
     Plot localization metrics over a single rotational axis.
+
+    Parameters
+    ----------
+    metrics : HeadOrientationsMetrics or list thereof
+        Metrics to plot. When a list is passed, each entry is plotted as a
+        separate series.
+    metric : str
+        Name of the metric attribute to plot.
+    limits : Sequence, optional
+        Y-axis limits as ``[ymin, ymax]``.
+    ax : matplotlib.axes.Axes, optional
+        Axes to plot on. If ``None``, the current axes (``plt.gca()``) are
+        used, so successive calls automatically share the same plot.
+    label : str, optional
+        Label for the plotted series. Overrides ``m.comment`` when provided.
+        Only used when ``metrics`` is a single ``HeadOrientationsMetrics``
+        instance; for lists the individual ``comment`` attributes are used.
+    marker : str, optional
+        Matplotlib marker style. Default is ``'x'``.
+    color : color or list of colors, optional
+        Matplotlib color or sequence of colors, one per series. If ``None``,
+        the default color cycle is used.
+
+    Returns
+    -------
+    matplotlib.axes.Axes
+        The axes the data was plotted on.
     """
+    if ax is None:
+        ax = plt.gca()
+
     # Normalize to a list
     if isinstance(metrics, HeadOrientationsMetrics):
-        metrics = [metrics]
-    for m in metrics:
-        # your plotting logic here
+        metrics_list = [metrics]
+        labels = [label if label is not None else metrics.comment]
+    else:
+        metrics_list = list(metrics)
+        labels = [m.comment for m in metrics_list]
+
+    # Normalize colors to a per-series list
+    if color is None:
+        colors = [None] * len(metrics_list)
+    elif isinstance(color, (list, tuple)) and len(color) == len(metrics_list):
+        colors = list(color)
+    else:
+        colors = [color] * len(metrics_list)
+
+    for m, lbl, c in zip(metrics_list, labels, colors):
         head_orientations = m.head_orientations
 
         bend = head_orientations[:, 0]
@@ -445,22 +492,25 @@ def plot_localization_1_dof(
 
         is_zero = [np.all(bend == 0), np.all(elev == 0), np.all(azim == 0)]
 
-        if sum(is_zero)!=2:
-            raise ValueError("Can only plot metrics for head orientations in one" \
-            "rotational axis, e.g. bend=0 and elev=0 for all orientations")
+        if sum(is_zero) != 2:
+            raise ValueError("Can only plot metrics for head orientations in one"
+                             "rotational axis, e.g. bend=0 and elev=0 for all orientations")
 
         values = m.__getattribute__(metric)
 
         axis_idx = np.where(~np.array(is_zero))[0]
         angles = head_orientations[:, axis_idx]
 
-        plt.plot(angles, values, marker='x', ls='', label=m.comment)
-        plt.ylim(limits)
-        plt.ylabel(metric)
-        plt.grid(True)
-        plt.legend()
+        plot_kwargs = dict(marker=marker, ls='', label=lbl, **kwargs)
+        if c is not None:
+            plot_kwargs['color'] = c
+        ax.plot(angles, values, **plot_kwargs)
 
-    return values
+    ax.set_ylim(limits)
+    ax.set_ylabel(metric)
+    ax.grid(True)
+
+    return ax
 
 
 def plot_localization_scatter(
