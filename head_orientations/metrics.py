@@ -152,6 +152,51 @@ class HeadOrientationsMetrics:
             return indices
         return self.head_orientations[indices], self.metrics_matrix[indices]
 
+    def get_subset(self, bend=None, elevation=None, azimuth=None, tol=1e-9):
+        """Return a new HeadOrientationsMetrics instance with matching entries.
+
+        Accepts the same query patterns as ``get_metrics``: ``None`` leaves an
+        axis unconstrained; a scalar or sequence selects specific values; three
+        equal-length sequences are interpreted as triplets
+        ``(bend[i], elevation[i], azimuth[i])``.
+
+        Parameters
+        ----------
+        bend : float, array-like, or None, optional
+            Bend angle(s) in degrees.
+        elevation : float, array-like, or None, optional
+            Elevation angle(s) in degrees.
+        azimuth : float, array-like, or None, optional
+            Azimuth angle(s) in degrees.
+        tol : float, optional
+            Absolute tolerance for floating-point comparisons. Default ``1e-9``.
+
+        Returns
+        -------
+        HeadOrientationsMetrics
+            New instance containing only the matching orientations and their
+            associated metric values.
+        """
+        indices = self._find_orientation(bend=bend, elevation=elevation,
+                                         azimuth=azimuth, tol=tol)
+
+        subset_orientations = self.head_orientations[indices]
+        metrics_data = {
+            key: self.metric_values(key)[indices] for key in self._metric_keys
+        }
+
+        instance = type(self).from_data(
+            subset_orientations,
+            metric_keys=self._metric_keys,
+            comment=self._comment,
+            **metrics_data,
+        )
+
+        # Preserve original file paths when available
+        instance._filepaths = [self._filepaths[i] for i in indices]
+
+        return instance
+
     def _find_files(self, base_dir):
         """Scan the base directory (recursively) and load .mat metric files."""
         for root, _, files in os.walk(base_dir):
@@ -540,14 +585,23 @@ def baumgartner_localization(template_head_orientations: HeadOrientations,
             target = np.ascontiguousarray(
                 np.moveaxis(hrirs_target.time, 2, 0)[:, *src_idx, :])
 
+        import scipy.io
+        scipy.io.savemat('/Users/antonhoyer/Documents/HATO_Maya_Model_V4/_scripts/head_orientations_package/head_orientations/debug_inputs.mat', {
+            'target': target,
+            'template': template,
+            'spectw': np.asarray(spectral_weighting)
+        })
+
         if spectral_weighting:
             err, _ = eng.baumgartner2014(target, template,
                                          'fs', hrirs_template.sampling_rate,
                                         'fsstim', hrirs_template.sampling_rate,
                                         'polsamp', np.rad2deg(angles),
                                         'tang', np.rad2deg(angles),
+                                        'rangsamp', 2.0,
                                         'spectw', spectral_weighting,
                                         'gamma', gamma,
+                                        'bwcoef', 1e-6,
                                         'S', S,
                                         'QE_PE_EB', nargout=2)
         else:
@@ -556,7 +610,9 @@ def baumgartner_localization(template_head_orientations: HeadOrientations,
                                         'fsstim', hrirs_template.sampling_rate,
                                         'polsamp', np.rad2deg(angles),
                                         'tang', np.rad2deg(angles),
+                                        'rangsamp', 2.0,
                                         'gamma', gamma,
+                                        'bwcoef', 1e-6,
                                         'S', S,
                                         'QE_PE_EB', nargout=2)
 
