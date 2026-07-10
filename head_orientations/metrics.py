@@ -2,7 +2,7 @@ import pyfar as pf
 import sofar as sf
 import scipy as sc
 from importlib import import_module
-from typing import Sequence
+from typing import Sequence, Union
 import tempfile
 from .head_orientation_class import HeadOrientations
 import os
@@ -548,14 +548,14 @@ def coloration_mc_kenzie(head_orientations: HeadOrientations,
 def baumgartner_localization(template_head_orientations: HeadOrientations,
                              target_head_orientations: HeadOrientations,
                              output_dir: str = None,
-                             spectral_weighting: bool = False,
+                             spectral_weighting: Union[str, Sequence] = None,
                              gamma = 6.0,
                              S = 1.0):
     """"""
     eng = _get_matlab_engine()
 
     angles = np.linspace(0, 2*np.pi, 180, endpoint=False)
-    sagittal_plane = pf.Coordinates.from_spherical_elevation(0, angles, 1)
+    sagittal_plane = pf.Coordinates.from_spherical_elevation(0, angles, 2)
 
     source = template_head_orientations.source_positions
     src_idx = source.find_nearest(sagittal_plane)[0]
@@ -585,14 +585,7 @@ def baumgartner_localization(template_head_orientations: HeadOrientations,
             target = np.ascontiguousarray(
                 np.moveaxis(hrirs_target.time, 2, 0)[:, *src_idx, :])
 
-        import scipy.io
-        scipy.io.savemat('/Users/antonhoyer/Documents/HATO_Maya_Model_V4/_scripts/head_orientations_package/head_orientations/debug_inputs.mat', {
-            'target': target,
-            'template': template,
-            'spectw': np.asarray(spectral_weighting)
-        })
-
-        if spectral_weighting:
+        if spectral_weighting is not None:
             err, _ = eng.baumgartner2014(target, template,
                                          'fs', hrirs_template.sampling_rate,
                                         'fsstim', hrirs_template.sampling_rate,
