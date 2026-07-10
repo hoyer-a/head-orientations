@@ -906,15 +906,74 @@ def plot_localization_map_subplots(
     plt.show()
 
 
+def _aggregate_pbc(pbc, aggregate):
+    """Aggregate pbc values across source positions per head orientation."""
+    if pbc.ndim == 1:
+        return pbc
+    if aggregate == 'mean':
+        return np.mean(pbc, axis=1)
+    elif aggregate == 'median':
+        return np.median(pbc, axis=1)
+    elif aggregate == 'upper_95':
+        return np.percentile(pbc, 95, axis=1)
+    elif aggregate == 'lower_95':
+        return np.percentile(pbc, 5, axis=1)
+    else:
+        raise ValueError(
+            "aggregate must be 'mean', 'median', 'upper_95', or 'lower_95'."
+        )
+
+
+def _add_coloration_annotations(ax, pbc, colors_all, annotate):
+    """Add a text box with statistics over all head orientations to an axes."""
+    if not annotate:
+        return
+    lines = []
+    for ann in annotate:
+        if ann == 'median':
+            val = np.median(colors_all)
+            lines.append(f'median: {val:.2f}')
+        elif ann == 'mean':
+            val = np.mean(colors_all)
+            lines.append(f'mean: {val:.2f}')
+        elif ann == 'max_lower_95':
+            if pbc.ndim > 1:
+                val = np.max(np.percentile(pbc, 5, axis=1))
+            else:
+                val = np.max(pbc)
+            lines.append(f'max lower 95: {val:.2f}')
+        elif ann == 'min_upper_95':
+            if pbc.ndim > 1:
+                val = np.min(np.percentile(pbc, 95, axis=1))
+            else:
+                val = np.min(pbc)
+            lines.append(f'min upper 95: {val:.2f}')
+        else:
+            raise ValueError(
+                f"Unknown annotation '{ann}'. Must be one of: "
+                "'median', 'mean', 'max_lower_95', 'min_upper_95'."
+            )
+    text = '\n'.join(lines)
+    ax.text(
+        0.02, 0.98, text,
+        transform=ax.transAxes,
+        va='top', ha='left',
+        fontsize=8,
+        bbox=dict(boxstyle='round,pad=0.3', facecolor='white', alpha=0.7),
+    )
+
+
 def plot_coloration_map(
         metrics: HeadOrientationsMetrics,
         rotation: float = None,
         limits: Sequence = None,
         cmap: str = 'viridis',
         rom_fill: Sequence = None,
-        rom_fill_rotation: Union[float, Sequence] = None):
+        rom_fill_rotation: Union[float, Sequence] = None,
+        aggregate: str = 'mean',
+        annotate: Sequence = None):
     """
-    Plot coloration metric (pbc averaged across source positions) as a Voronoi
+    Plot coloration metric (pbc aggregated across source positions) as a Voronoi
     cell map over lateral bend / flexion-extension space.
 
     Parameters
@@ -932,6 +991,15 @@ def plot_coloration_map(
     rom_fill_rotation : float, tuple, optional
         Rotation angle(s) for which to plot the ROM fill. Can be a scalar or tuple.
         If None, ROM fill is plotted for all rotations.
+    aggregate : str, optional
+        Aggregation method over source positions. One of ``'mean'`` (default),
+        ``'median'``, ``'upper_95'`` (95th percentile), ``'lower_95'``
+        (5th percentile).
+    annotate : list of str, optional
+        Statistics to annotate on each subplot, computed over all head
+        orientations. Supported values: ``'median'``, ``'mean'``,
+        ``'max_lower_95'`` (max of lower 5th percentile per orientation),
+        ``'min_upper_95'`` (min of upper 95th percentile per orientation).
     """
 
     import numpy as np
@@ -942,13 +1010,9 @@ def plot_coloration_map(
     from matplotlib.collections import PatchCollection
     from matplotlib.colors import Normalize
 
-    # Get pbc data and average across source positions
+    # Get pbc data and aggregate across source positions
     pbc = metrics.pbc  # Shape: (n_orientations, n_source_positions)
-    if pbc.ndim > 1:
-        # Average across source positions
-        colors_all = np.mean(pbc, axis=1)
-    else:
-        colors_all = pbc
+    colors_all = _aggregate_pbc(pbc, aggregate)
 
     rotation = np.atleast_1d(rotation)
 
@@ -1049,6 +1113,7 @@ def plot_coloration_map(
 
         ax.set_aspect('equal', adjustable='box')
         ax.grid(True, alpha=0.2)
+        _add_coloration_annotations(ax, pbc, colors_all, annotate)
 
         cbar = fig.colorbar(collection, ax=ax)
         cbar.set_label('Coloration (PBC)')
@@ -1065,9 +1130,11 @@ def plot_coloration_map_subplots(
         rom_fill: Sequence = None,
         rom_fill_rotation: Union[float, Sequence] = None,
         cols: int = 4,
-        figsize: Sequence = None):
+        figsize: Sequence = None,
+        aggregate: str = 'mean',
+        annotate: Sequence = None):
     """
-    Plot coloration metric (pbc averaged across source positions) as Voronoi cell
+    Plot coloration metric (pbc aggregated across source positions) as Voronoi cell
     maps in a grid of subplots, one subplot per rotation value.
 
     Parameters
@@ -1088,19 +1155,24 @@ def plot_coloration_map_subplots(
         Number of columns in the subplot grid. Default is 4.
     figsize : Sequence, optional
         Figure size as (width, height). If None, auto-calculated based on grid size.
+    aggregate : str, optional
+        Aggregation method over source positions. One of ``'mean'`` (default),
+        ``'median'``, ``'upper_95'`` (95th percentile), ``'lower_95'``
+        (5th percentile).
+    annotate : list of str, optional
+        Statistics to annotate on each subplot, computed over all head
+        orientations. Supported values: ``'median'``, ``'mean'``,
+        ``'max_lower_95'`` (max of lower 5th percentile per orientation),
+        ``'min_upper_95'`` (min of upper 95th percentile per orientation).
     """
     from scipy.spatial import Voronoi
     from matplotlib.patches import Polygon
     from matplotlib.collections import PatchCollection
     from matplotlib.colors import Normalize
 
-    # Get pbc data and average across source positions
+    # Get pbc data and aggregate across source positions
     pbc = metrics.pbc  # Shape: (n_orientations, n_source_positions)
-    if pbc.ndim > 1:
-        # Average across source positions
-        colors_all = np.mean(pbc, axis=1)
-    else:
-        colors_all = pbc
+    colors_all = _aggregate_pbc(pbc, aggregate)
 
     # Get all unique rotation values if not specified
     if rotation is None:
@@ -1227,6 +1299,7 @@ def plot_coloration_map_subplots(
         ax.set_ylabel('Extension/Flexion [°]', fontsize=10)
         ax.set_aspect('equal', adjustable='box')
         ax.grid(True, alpha=0.2)
+        _add_coloration_annotations(ax, pbc, colors_all, annotate)
 
     # Add colorbar to the right of the figure
     cbar_ax = fig.add_axes([0.92, 0.15, 0.02, 0.7])
