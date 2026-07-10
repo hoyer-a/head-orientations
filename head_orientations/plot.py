@@ -202,7 +202,7 @@ def subplot_spectral_difference(head_orientations, reference,
     columns = 2
     rows = int(np.ceil(n_files / columns))
 
-    fig = plt.figure(figsize=(10, 4 * rows))
+    fig = plt.figure(figsize=(10, 4 * rows), dpi=300)
     fig.suptitle(f"{plane} plane\n{ear} ear")
     gs = GridSpec(rows, columns)
 
@@ -786,7 +786,7 @@ def plot_localization_map_subplots(
         figsize = (cols * 5, rows * 4.5)
 
     # Create figure with subplots
-    fig = plt.figure(figsize=figsize)
+    fig = plt.figure(figsize=figsize, dpi=300)
     gs = GridSpec(rows, cols, figure=fig, hspace=0.35, wspace=0.15)
 
     # Collect all colors for global normalization if needed
@@ -1127,7 +1127,7 @@ def plot_coloration_map_subplots(
         figsize = (cols * 5, rows * 4.5)
 
     # Create figure with subplots
-    fig = plt.figure(figsize=figsize)
+    fig = plt.figure(figsize=figsize, dpi=300)
     gs = GridSpec(rows, cols, figure=fig, hspace=0.35, wspace=0.15)
 
     # Collect all colors for global normalization if needed
