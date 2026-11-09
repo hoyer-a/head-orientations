@@ -26,7 +26,7 @@ base_dir1 = "/Users/antonhoyer/Documents/HATO_Maya_Model_V4/_results/1m radius" 
 Dataset = HeadOrientationsDataset.from_directory(base_dir2)
 HeadOrientations = Dataset.get_head_orientations(azimuth=0,
                                                  bend=0,
-                                                 elevation=(0, -10, -20, -30, -40))
+                                                 elevation=(0, 20, 55))
 Fixed = Dataset.get_head_orientations(0, 0, 0)
 Head = Dataset.get_head_orientations(0.5, 0.5, 0.5)
 
@@ -36,9 +36,10 @@ print(hrirs)
 
 # %%
 # ------------------- PLOTS: SPECTRAL DIFFERENCE SUBPLOTS ---------------------
-subplot_spectral_difference(HeadOrientations, Head, db_threshold=1,
-                            sort=True, limits=(-20, 20), ear='left',
-                            plane='median')
+fig = plt.figure(figsize=(13, 5), dpi=300)
+subplot_spectral_difference(HeadOrientations, Fixed, db_threshold=1,
+                            sort='ascending', limits=(-20, 20), ear='left',
+                            plane='median', columns=3)
 # %%
 # ------------------- PLOT: MEAN SIGNED SPECTRAL DIFFERENCE -------------------
 ho = Dataset.get_head_orientations(40, 20, 10)
@@ -320,11 +321,12 @@ for azi_ in azimuth_rotations:
 # %%
 # ------------------ LOCALIZATION METRICS: METRICS CLASS ----------------------
 base_dir = \
-    "/Users/antonhoyer/Documents/HATO_Maya_Model_V4/_results/2m radius/localization_metrics_baumgartner/natural_fixed_weighted"
+    "//Users/antonhoyer/Documents/HATO_Maya_Model_V4/_results/2m radius/localization_metrics_baumgartner/natural_fixed_weighted"
 base_dir_nat = \
     "/Users/antonhoyer/Documents/HATO_Maya_Model_V4/_results/2m radius/localization_metrics_baumgartner/natural_natural_nr_weighted"
 base_dir_head = \
-    "/Users/antonhoyer/Documents/HATO_Maya_Model_V4/_results/2m radius/localization_metrics_baumgartner/natural_head_weighted"
+    "//Users/antonhoyer/Documents/HATO_Maya_Model_V4/_results/2m radius/localization_metrics_baumgartner/natural_head_weighted"
+
 
 
 fixed = HeadOrientationsMetrics(base_dir, comment='fixed')
@@ -343,7 +345,7 @@ bend = bend_range_max[1] * np.sin(gamma)**2 * np.sign(np.sin(gamma))
 flex = flex_range * ((1-np.cos(gamma)) / 2)**(5/4) - flex_range / 2
 
 rom_rot = np.arange(-30, 40, 10)
-loc_metric = 'rmsP'
+loc_metric = 'querr'
 
 # plot_localization_map(natural, None, np.arange(0, 70, 10), 'rmsP',
 #                       None, cmap='inferno')
@@ -353,25 +355,35 @@ if loc_metric == 'rmsP':
 elif loc_metric == 'querr':
     limit_1 = (10, 15)
 
+limit_1 = None
+
+
 print(f"Baumgartner / Llado localization weighted {loc_metric}: natural")
 plot_localization_map_subplots(natural, None, np.arange(0, 70, 10), loc_metric,
                                limit_1, cmap='inferno', rom_fill=(bend, -flex),
-                               rom_fill_rotation=rom_rot, cols=3)
+                               rom_fill_rotation=rom_rot, cols=3,
+                               annotate_min_max=True,
+                               figsize=(10, 11),)
 
-print(f"Baumgartner / Llado localization {loc_metric}: natural - fixed")
-plot_localization_map_subplots(natural, fixed, np.arange(0, 70, 10), loc_metric,
-                               (-5, 5), rom_fill=(bend, -flex),
-                               rom_fill_rotation=rom_rot, cols=3)
+# print(f"Baumgartner / Llado localization {loc_metric}: natural - fixed")
+# plot_localization_map_subplots(natural, fixed, np.arange(0, 70, 10), loc_metric,
+#                                (-5, 5), rom_fill=(bend, -flex),
+#                                rom_fill_rotation=rom_rot, cols=3,
+#                                annotate_min_max=True,
+#                                figsize=(10, 11))
 
-print(f"Baumgartner / Llado localization {loc_metric}: fixed - head")
-plot_localization_map_subplots(fixed, head, np.arange(0, 70, 10), loc_metric,
-                               (-5, 5), rom_fill=(bend, -flex),
-                               rom_fill_rotation=rom_rot, cols=3)
+# print(f"Baumgartner / Llado localization {loc_metric}: fixed - head")
+# plot_localization_map_subplots(fixed, head, np.arange(0, 70, 10), loc_metric,
+#                                (-5, 5), rom_fill=(bend, -flex),
+#                                rom_fill_rotation=rom_rot, cols=3,
+#                                annotate_min_max=True,
+#                                figsize=(10, 11))
 
-print(f"Baumgartner / Llado localization {loc_metric}: natural - head")
-plot_localization_map_subplots(natural, head, np.arange(0, 70, 10), loc_metric,
-                               (-5, 5), rom_fill=(bend, -flex),
-                               rom_fill_rotation=rom_rot, cols=3)
+print(f"Baumgartner / Llado localization {loc_metric}: fixed")
+plot_localization_map_subplots(fixed, None, np.arange(0, 70, 10), loc_metric,
+                               limit_1, cmap='inferno', rom_fill=(bend, -flex),
+                               rom_fill_rotation=rom_rot, cols=3,
+                               annotate_min_max=True)
 
 
 # %%
@@ -405,16 +417,20 @@ rom_rot = np.arange(-30, 40, 10)
 #                     rom_fill_rotation=rom_rot)
 
 print("McKenzie percieved binaural coloration: natural vs fixed")
-plot_coloration_map_subplots(fixed, np.arange(0, 70, 10), (0, 25),
+plot_coloration_map_subplots(fixed, np.arange(0, 70, 10), (0, 80),
                              rom_fill=(bend, -flex),
                              rom_fill_rotation=rom_rot,
-                             cols=3)
+                             cols=3,
+                             aggregate='upper_95',
+                             figsize=(10, 11))
 
 print("McKenzie percieved binaural coloration: natural vs head")
-plot_coloration_map_subplots(head, np.arange(0, 70, 10), (0, 25),
+plot_coloration_map_subplots(head, np.arange(0, 70, 10), (0, 80),
                              rom_fill=(bend, -flex),
                              rom_fill_rotation=rom_rot,
-                             cols=3)
+                             cols=3,
+                             aggregate='upper_95',
+                             figsize=(10, 11))
 
 # %%
 # ------------ HRTF NORMALIZATION: FARFIELD CORRECTION & DTF ------------------
@@ -468,15 +484,16 @@ gamma = np.deg2rad(np.arange(0, 361))
 bend = bend_range_max[1] * np.sin(gamma)**2 * np.sign(np.sin(gamma))
 flex = flex_range * ((1-np.cos(gamma)) / 2)**(5/4) - flex_range / 2
 
-#fixed = HeadOrientationsMetrics(base_dir_fixed, metric_keys=('pbc',), comment='fixed')
+fixed = HeadOrientationsMetrics('/Users/antonhoyer/Documents/HATO_Maya_Model_V4/_results/2m radius/coloration/natural_fixed', metric_keys=('pbc',), comment='fixed')
+head = HeadOrientationsMetrics('/Users/antonhoyer/Documents/HATO_Maya_Model_V4/_results/2m radius/coloration/natural_head', metric_keys=('pbc',), comment='fixed')
 
 flex_range_max = [-15, 15]
 bend_range_max = [-10, 10]
 rot_range = (-30, 40)
 
-flex_range_max = [-60, 60]
-bend_range_max = [-60, 60]
-rot_range = (-60, 70)
+# flex_range_max = [-60, 60]
+# bend_range_max = [-60, 60]
+# rot_range = (-60, 70)
 
 flex_range = flex_range_max[1] - flex_range_max[0]
 
@@ -491,22 +508,75 @@ for rot_ in np.arange(*rot_range, 10):
                                   tolerance=0.5, rotation=rot_)
     indices = np.where(mask)[0]
     print(f'Rotation: {rot_} degree')
-    print(f"natural: {np.mean(natural.querr[indices]):.2f}",
-          f"fixed: {np.mean(fixed.querr[indices]):.2f}",
-          f"head: {np.mean(head.querr[indices]):.2f}"
-          "\n---------------------------------------")
-
-    # print(f"fixed: {np.mean(fixed.querr[indices]):.2f}",
-    #       f"head: {np.mean(head.querr[indices]):.2f}"
+    # print(f"natural: {np.mean(natural.rmsL[indices]):.2f}",
+    #       f"fixed: {np.mean(fixed.rmsL[indices]):.2f}",
+    #       f"head: {np.mean(head.rmsL[indices]):.2f}"
     #       "\n---------------------------------------")
+
+    # print(f"fixed: {np.mean(fixed.pbc[indices]):.2f}",
+    #       f"head: {np.mean(head.pbc[indices]):.2f}"
+    #       "\n---------------------------------------")
+
+    print(f"fixed: {np.percentile(fixed.pbc[indices], 95):.2f}",
+          f"head: {np.percentile(head.pbc[indices], 95):.2f}"
+          "\n---------------------------------------")
 
 # %%
 # --------------------------- PLOT HRTFS IN PLANE -----------------------------
 fixed = Dataset.get_head_orientations(0, 0, 0)
 #plot_single_spectral_difference(Dataset.get_head_orientations(0, 0, 0), None, 'median', limits=(-60, 20))
-fig = plt.figure(dpi=300)
-plot_single_spectral_difference(Dataset.get_head_orientations(0, 0, 0), None, 'median', ear='left', limits=(-25, 25))
-plot_single_spectral_difference(Dataset.get_head_orientations(-30, 0, 0), None, 'median', ear='right', limits=(-25, 25))
+fig = plt.figure(figsize=(5, 4), dpi=300)
+ax=plot_single_spectral_difference(Dataset.get_head_orientations(0, 0, 0), None, 'median', ear='left', limits=(-25, 25))
+fig = plt.figure(figsize=(5, 4), dpi=300)
+plot_single_spectral_difference(Dataset.get_head_orientations(0, 0, 0), None, 'horizontal', ear='left', limits=(-25, 25))
+
+# %%
+# -------- PLOT HRTFS IN PLANE: 1x2 SUBPLOTS WITH SHARED COLORBAR -----------
+ho_fixed = Dataset.get_head_orientations(0, 0, 0)
+
+fig, axs = plt.subplots(1, 2, figsize=(9, 4), dpi=300)
+
+_, ax_median, qm_median, _ = plot_single_spectral_difference(
+    ho_fixed,
+    None,
+    'median',
+    ear='left',
+    limits=(-25, 25),
+    ax=axs[0],
+    colorbar=False,
+    show=False,
+)
+ax_median.set_ylabel("Elevation in degree")
+ax_median.set_title("a) Median plane")
+
+_, ax_horizontal, qm_horizontal, _ = plot_single_spectral_difference(
+    ho_fixed,
+    None,
+    'horizontal',
+    ear='left',
+    limits=(-25, 25),
+    ax=axs[1],
+    colorbar=False,
+    show=False,
+)
+ax_horizontal.set_ylabel("Azimuth in degree")
+ax_horizontal.set_title("b) Horizontal plane")
+
+for axis in (ax_median, ax_horizontal):
+    for label in axis.get_xticklabels():
+        if label.get_text().strip() == "600":
+            label.set_visible(False)
+
+fig.subplots_adjust(bottom=0.24, wspace=0.25)
+cbar_ax = fig.add_axes([0.24, 0.07, 0.52, 0.03])
+cbar = fig.colorbar(
+    qm_horizontal if qm_horizontal is not None else qm_median,
+    cax=cbar_ax,
+    orientation='horizontal',
+)
+cbar.set_label('Magnitude in dB')
+
+plt.show()
 
 # %%
 # -------------------------- GREAT CIRLCE DISTANCE ----------------------------
@@ -527,7 +597,7 @@ cmap = mcolors.LinearSegmentedColormap.from_list(
 )
 
 case = 'natural_fixed'
-matrix_dir = f"/Users/antonhoyer/Documents/HATO_Maya_Model_V4/_results/2m radius/localization_metrics/{case}/prediction_matrices"
+matrix_dir = f"/Users/antonhoyer/Documents/HATO_Maya_Model_V4/_results/2m radius/localization_metrics_barumerli/{case}/prediction_matrices"
 b, e, a = [0, -55, 0]
 file = f'matrix_bend_{b}elev_{e}azim{a}.mat'
 loc_matrix = sc.io.loadmat(os.path.join(matrix_dir, file))
@@ -536,10 +606,11 @@ loc_matrix = loc_matrix['prediction_matrix'].reshape((200, 1000, 8))
 loc_matrix = np.mean(loc_matrix, axis=0)
 
 case2 = 'natural_natural'
-matrix_dir = f"/Users/antonhoyer/Documents/HATO_Maya_Model_V4/_results/2m radius/localization_metrics/{case2}/prediction_matrices"
-b, e, a = [0, -55, 0]
+matrix_dir = f"/Users/antonhoyer/Documents/HATO_Maya_Model_V4/_results/2m radius/localization_metrics_barumerli/{case2}/prediction_matrices"
+b, e, a = [0, 55, 0]
 file = f'matrix_bend_{b}elev_{e}azim{a}.mat'
 loc_matrix2 = sc.io.loadmat(os.path.join(matrix_dir, file))
+
 
 loc_matrix2 = loc_matrix2['prediction_matrix'].reshape((200, 1000, 8))
 loc_matrix2 = np.mean(loc_matrix2, axis=0)
@@ -547,24 +618,126 @@ loc_matrix2 = np.mean(loc_matrix2, axis=0)
 coords = pf.Coordinates.from_spherical_elevation(loc_matrix[:, 0]/180*np.pi,
                                                  loc_matrix[:, 1]/180*np.pi, 1)
 
-spharpy.plot.pcolor_map(coords,
-                        great_circle_distance(loc_matrix2) - great_circle_distance(loc_matrix),
-                        cmap=cmap, limits=(-10, 10))
+# spharpy.plot.pcolor_map(coords,
+#                         great_circle_distance(loc_matrix2) - great_circle_distance(loc_matrix),
+#                         cmap=cmap, limits=(-10, 10))
 
 
-plt.title(f"gcd natural - gcd fixed\nbend: {b}; elev: {e}, azimuth: {a}")
-plt.show()
+# plt.title(f"gcd natural - gcd fixed\nbend: {b}; elev: {e}, azimuth: {a}")
+# plt.show()
+fig = plt.figure(dpi=300)
+ax, cf, cb = spharpy.plot.pcolor_map(coords,
+                        great_circle_distance(loc_matrix2), limits=(0, 100),
+                        colorbar=False)
+ax.tick_params(axis="x", colors="black")
+ax.tick_params(axis="y", colors="black")
+ax.set_xlabel('Azimuth in degree')
+ax.set_ylabel('Elevation in degree')
 
-spharpy.plot.pcolor_map(coords,
-                        great_circle_distance(loc_matrix2), limits=(0, 100))
+cb = plt.colorbar(cf, ax=ax, orientation='horizontal', label='GCD in degree')
+print(f"GCD max: {cb.norm.vmax:.2f}")
+
+pos = cb.ax.get_position()
+cb.ax.set_position([pos.x0, pos.y0 + .05, pos.width, pos.height])
+
 plt.title(f"{case2}\nbend: {b}; elev: {e}, azimuth: {a}")
 plt.show()
 
 # %%
+
+# %%
+
+# %%
+# ------------------- GREAT CIRCLE DISTANCE: SUBPLOTS -------------------------
+gcd_case = 'natural_natural'
+gcd_matrix_dir = f"/Users/antonhoyer/Documents/HATO_Maya_Model_V4/_results/2m radius/localization_metrics/{gcd_case}/prediction_matrices"
+
+gcd_targets = np.array([[0, 0, 60], [0, 55, 0], [0, -55, 0], [40, 0, 0]])
+gcd_titles = [
+    r"Rotation $R_z = +60^\circ$",
+    r"Flexion $R_y = +55^\circ$",
+    r"Extension $R_y = -55^\circ$",
+    r"Lateral bend $R_x = -40^\circ$",
+]
+
+fig, ax = plt.subplots(2, 2, figsize=(12, 8), subplot_kw={'projection': 'mollweide'}, dpi=300)
+
+cf = None
+
+for id, (target, title) in enumerate(zip(gcd_targets, gcd_titles)):
+    b_, e_, a_ = target
+    gcd_file = f'matrix_bend_{b_}elev_{e_}azim{a_}.mat'
+    gcd_mat = sc.io.loadmat(os.path.join(gcd_matrix_dir, gcd_file))
+    gcd_mat = gcd_mat['prediction_matrix'].reshape((200, 1000, 8))
+    gcd_mat = np.mean(gcd_mat, axis=0)
+
+    gcd_coords = pf.Coordinates.from_spherical_elevation(
+        gcd_mat[:, 0] / 180 * np.pi,
+        gcd_mat[:, 1] / 180 * np.pi, 1
+    )
+
+    row = id // 2
+    col = id % 2
+
+    _, cf, _ = spharpy.plot.pcolor_map(gcd_coords, great_circle_distance(gcd_mat),
+                                       colorbar=False, ax=ax[row, col], limits=(0, 100))
+
+    ax[row, col].grid(color='black', alpha=.7)
+    ax[row, col].tick_params(axis="x", colors="black")
+    ax[row, col].tick_params(axis="y", colors="black")
+    ax[row, col].set_title(title, y=1.05)
+    ax[row, col].set_xlabel("Azimuth in degree")
+    ax[row, col].set_ylabel("Elevation in degree")
+
+if cf is not None:
+    fig.subplots_adjust(left=0.06, right=0.98, top=0.96, bottom=0.14,
+                        wspace=0.12, hspace=0.26)
+    cax = fig.add_axes([0.25, 0.07, 0.5, 0.03])
+    cbar = fig.colorbar(cf, cax=cax, orientation='horizontal')
+    cbar.set_label('GCD in degree')
+
+plt.show()
+
+# %%
 # ----------------- COLORATION: PLOT COLORATION OVER SOURCE -------------------
-fp_natural = '/Users/antonhoyer/Documents/HATO_Maya_Model_V4/_results/2m radius/sofa/raw_data/bend-10.0_elev-30.0_azim-50.0/HRIR_lebedev44_and_planes.sofa'
+fp_natural = '/Users/antonhoyer/Documents/HATO_Maya_Model_V4/_results/2m radius/sofa/raw_data/bend0.0_elev55.0_azim0.0/HRIR_lebedev44_and_planes.sofa'
 _, source, _ = pf.io.read_sofa(fp_natural)
 
+base_dir_fixed = "/Users/antonhoyer/Documents/HATO_Maya_Model_V4/_results/2m radius/coloration/natural_head"
+
+fixed = HeadOrientationsMetrics(base_dir_fixed, metric_keys=("pbc",),
+                                comment='fixed')
+
+ho = fixed.head_orientations
+pbc = fixed.pbc
+
+target = np.array([0, 55, 0])
+
+mask = np.all(ho == target, axis=1)   # True where row matches target
+idx = np.where(mask)[0]
+
+fig = plt.figure(dpi=300)
+ax, cf, cb = spharpy.plot.pcolor_map(source, pbc[*idx], colorbar=False,
+                                     limits=(0, 100))
+#plt.title(f"pbc\nbend: {target[0]}; elev: {target[1]}, azimuth: {target[2]}")
+cb = plt.colorbar(cf, ax=ax, orientation='horizontal', label='PBC')
+
+ax.tick_params(axis="x", colors="black")
+ax.tick_params(axis="y", colors="black")
+ax.set_xlabel("Azimuth in degree")
+ax.set_ylabel("Elevation in degree")
+
+
+pos = cb.ax.get_position()
+cb.ax.set_position([
+    pos.x0,
+    pos.y0+.05,
+    pos.width,
+    pos.height
+])
+plt.show()
+#%%
+# --------------- COLORATION: SUBPLOTS COLORATION OVER SOURCE -----------------
 base_dir_fixed = "/Users/antonhoyer/Documents/HATO_Maya_Model_V4/_results/2m radius/coloration/natural_fixed"
 
 fixed = HeadOrientationsMetrics(base_dir_fixed, metric_keys=("pbc",),
@@ -573,15 +746,51 @@ fixed = HeadOrientationsMetrics(base_dir_fixed, metric_keys=("pbc",),
 ho = fixed.head_orientations
 pbc = fixed.pbc
 
-target = np.array([-40, 0, 0])
+targets = np.array([[0, 0, 60], [0, 55, 0], [0, -55, 0], [40, 0, 0]])
+titles = [
+    r"Rotation $R_z = +60^\circ$",
+    r"Flexion $R_y = +55^\circ$",
+    r"Extension $R_y = -55^\circ$",
+    r"Lateral bend $R_x = -40^\circ$",
+]
 
-mask = np.all(ho == target, axis=1)   # True where row matches target
-idx = np.where(mask)[0]
+fig, ax = plt.subplots(2, 2, figsize=(12, 8), subplot_kw={'projection': 'mollweide'}, dpi=300)
 
-spharpy.plot.pcolor_map(source, pbc[*idx], limits=(0, 100))
-plt.title(f"pbc\nbend: {target[0]}; elev: {target[1]}, azimuth: {target[2]}")
+cf = None
+
+for id, (target, title) in enumerate(zip(targets, titles)):
+    row = id // 2
+    col = id % 2
+
+    mask = np.all(ho == target, axis=1)   # True where row matches target
+    idx = np.where(mask)[0]
+
+    _, cf, _ = spharpy.plot.pcolor_map(source, pbc[*idx], colorbar=False,
+                                       ax=ax[row, col], limits=(0, 100))
+
+    ax[row, col].grid(color='black', alpha=.7)  # or True, color="0.7", alpha=0.6
+
+    ax[row, col].tick_params(axis="x", colors="black")
+    ax[row, col].tick_params(axis="y", colors="black")
+
+    ax[row, col].set_title(title, y=1.05)
+    ax[row, col].set_xlabel("Azimuth in degree")
+    ax[row, col].set_ylabel("Elevation in degree")
+
+
+if cf is not None:
+    # Reserve space and place one shared horizontal colorbar at the bottom.
+    fig.subplots_adjust(left=0.06, right=0.98, top=0.96, bottom=0.14,
+                        wspace=0.12, hspace=0.26)
+    cax = fig.add_axes([0.25, 0.07, 0.5, 0.03])
+    cbar = fig.colorbar(cf, cax=cax, orientation='horizontal')
+    cbar.set_label('PBC')
 
 plt.show()
+
+
+
+
 # %%
 # -------------- LOCALIZATION METRICS: SAVE BAUMGARTNER / LLADO ---------------
 # Start matlab engine
@@ -627,9 +836,9 @@ for azi_ in azimuth_rotations:
     ho = far_field_correction(ho)
     ho = directional_transfer_function(ho)
 
-    results_natural_weighted = baumgartner_localization(ho, ho,
-                                                        '/Users/antonhoyer/Documents/HATO_Maya_Model_V4/_results/2m radius/localization_metrics_baumgartner/natural_natural_dt_weighted',
-                                                        spectral_weighting='DT',
+    results_natural_weighted = baumgartner_localization(ho, head,
+                                                        '/Users/antonhoyer/Documents/HATO_Maya_Model_V4/_results/2m radius/localization_metrics_baumgartner_azi=-65/natural_head_nr_weighted',
+                                                        spectral_weighting='NR',
                                                         gamma=gamma_median,
                                                         S=S_median
                                                         )
@@ -727,7 +936,7 @@ plt.show()
 # %%
 # ------------------------- EXPORT METRICS TO EXCEL ---------------------------
 base_dir_nat = \
-    "/Users/antonhoyer/Documents/HATO_Maya_Model_V4/_results/2m radius/localization_metrics_baumgartner/natural_head_weighted"
+    "/Users/antonhoyer/Documents/HATO_Maya_Model_V4/_results/2m radius/localization_metrics_baumgartner/natural_natural_nr_weighted"
 natural = HeadOrientationsMetrics(base_dir_nat, comment='natural')
 
 df = pd.DataFrame()
@@ -738,5 +947,12 @@ df['querr'] = natural.querr
 df['rmsP'] = natural.rmsP
 
 out_dir = '/Users/antonhoyer/Documents/HATO_Maya_Model_V4/_results/2m radius/localization_metrics_baumgartner'
-df.to_csv(os.path.join(out_dir, 'natural_head.csv'))
+# df.to_csv(os.path.join(out_dir, 'natural_natural.csv'))
 
+# %%
+import pyfar as pf
+import spharpy
+# %%
+sampling = spharpy.samplings.lebedev(n_max=44)
+print(sampling.csize)
+# %%
