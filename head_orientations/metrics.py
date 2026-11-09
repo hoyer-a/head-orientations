@@ -549,8 +549,8 @@ def baumgartner_localization(template_head_orientations: HeadOrientations,
                              target_head_orientations: HeadOrientations,
                              output_dir: str = None,
                              spectral_weighting: Union[str, Sequence] = None,
-                             gamma = 6.0,
-                             S = 1.0):
+                             gamma=6.0,
+                             S=1.0):
     """"""
     eng = _get_matlab_engine()
 
@@ -591,6 +591,7 @@ def baumgartner_localization(template_head_orientations: HeadOrientations,
                                         'fsstim', hrirs_template.sampling_rate,
                                         'polsamp', np.rad2deg(angles),
                                         'tang', np.rad2deg(angles),
+                                        'lat', -65.0,
                                         'rangsamp', 2.0,
                                         'spectw', spectral_weighting,
                                         'gamma', gamma,

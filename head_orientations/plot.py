@@ -1,3 +1,5 @@
+import os
+
 import matplotlib.colors as mcolors
 import matplotlib.pyplot as plt
 import matplotlib.tri as mtri
@@ -111,7 +113,7 @@ def _voronoi_finite_polygons_2d(vor, radius=None):
 def subplot_spectral_difference(head_orientations, reference,
                                 plane='horizontal', ear='left',
                                 db_threshold=None, limits=None,
-                                sort=False):
+                                sort=False, columns=2, output_file=None):
     """
     Plot spectral difference for multiple head orientations against one
     reference head orientation.
@@ -129,9 +131,16 @@ def subplot_spectral_difference(head_orientations, reference,
     db_threshold : float, None
         Threshold for plot. Differences below this value will be set to 0.
         Default is 1.
-    sort : bool, optional
-        If ``True``, sort plotted orientations by
+    sort : bool or str, optional
+        Sorting mode for plotted orientations by
         ``(bend, elevation, azimuth)``.
+        Supported values are:
+        ``'ascending'`` (or ``True``),
+        ``'descending'``, and ``False`` (no sorting).
+    columns : int, optional
+        Number of columns in the subplot grid. Default is 2.
+    output_file : str or path-like, optional
+        If provided, save the figure to this path before displaying it.
 
     """
     if ear == 'left':
@@ -173,10 +182,10 @@ def subplot_spectral_difference(head_orientations, reference,
     else:
         raise ValueError("plane must be 'median', 'frontal', or 'horizontal'.")
 
-    if reference.n_orientations != 1:
-        raise ValueError(
-            "reference must contain exactly one head orientation."
-        )
+    # if reference.n_orientations != 1:
+    #     raise ValueError(
+    #         "reference must contain exactly one head orientation."
+    #     )
 
     reference_hrirs = reference.hrirs[0, :]
     orientation_values = head_orientations.head_orientations
@@ -187,7 +196,24 @@ def subplot_spectral_difference(head_orientations, reference,
 
     reference_hrirs = reference_hrirs[idx_ref]
 
-    if sort:
+    if isinstance(sort, bool):
+        sort_mode = 'ascending' if sort else False
+    elif isinstance(sort, str):
+        sort_lower = sort.lower().strip()
+        if sort_lower in ('ascending', 'asc', 'asxnedi'):
+            sort_mode = 'ascending'
+        elif sort_lower in ('descending', 'desc', 'desxending'):
+            sort_mode = 'descending'
+        elif sort_lower in ('false', 'fakse', 'off', 'none'):
+            sort_mode = False
+        else:
+            raise ValueError(
+                "sort must be one of: 'ascending', 'descending', or False."
+            )
+    else:
+        raise TypeError("sort must be a bool or a string.")
+
+    if sort_mode:
         sort_order = np.lexsort(
             (
                 orientation_values[:, 2],
@@ -195,16 +221,31 @@ def subplot_spectral_difference(head_orientations, reference,
                 orientation_values[:, 0],
             )
         )
+        if sort_mode == 'descending':
+            sort_order = sort_order[::-1]
         plot_indices = plot_indices[sort_order]
 
     # prepare plot
     n_files = plot_indices.size
-    columns = 2
+    columns = int(columns)
+    if columns < 1:
+        raise ValueError("columns must be a positive integer.")
     rows = int(np.ceil(n_files / columns))
 
-    fig = plt.figure(figsize=(10, 4 * rows), dpi=300)
+    if plt.get_fignums():
+        fig = plt.gcf()
+        fig.clf()
+    else:
+        fig = plt.figure(figsize=(10, 4 * rows), dpi=300)
     fig.suptitle(f"{plane} plane\n{ear} ear")
-    gs = GridSpec(rows, columns)
+    gs = GridSpec(
+        rows + 1,
+        columns,
+        height_ratios=[1] * rows + [0.04],
+    )
+    cbar_ax = fig.add_subplot(gs[-1, :])
+    cbar_ax.set_visible(False)
+    qm_for_colorbar = None
 
     # create subplots
     for i, plot_idx in enumerate(plot_indices):
@@ -213,12 +254,7 @@ def subplot_spectral_difference(head_orientations, reference,
 
         hrirs = hrirs[idx_ho]
 
-        print(hrirs)
-        print(reference_hrirs)
-
-        spec_diff = spectral_difference(hrirs, reference_hrirs)
-
-        print(spectral_difference)
+        spec_diff = spectral_difference(reference_hrirs, hrirs)  # H_ref / H_nat
 
         if db_threshold:
             db, prefix = \
@@ -235,7 +271,7 @@ def subplot_spectral_difference(head_orientations, reference,
         col = i % columns
 
         ax = fig.add_subplot(gs[row, col])
-        pf.plot.freq_2d(
+        _, qm, _ = pf.plot.freq_2d(
             spec_diff[:, ear_id].flatten(),
             ax=ax,
             indices=np.rad2deg(angles),
@@ -243,12 +279,44 @@ def subplot_spectral_difference(head_orientations, reference,
             cmap=cmap,
             vmin=vmin,
             vmax=vmax,
+            colorbar=False,
         )
+        if qm_for_colorbar is None:
+            qm_for_colorbar = qm
         ax.set_title(f"bend: {b}; elev: {e}, azimuth: {a}")
-        ax.set_ylabel('angle in degree')
+        if col == 0:
+            ax.set_ylabel('angle in degree')
+        else:
+            ax.set_ylabel('')
+        for label in ax.get_xticklabels():
+            if label.get_text().strip() == "600":
+                label.set_visible(False)
         # ax.set_xlim(1e3, 6e3)
         # ax.set_xscale('linear')
+    cbar = None
+    if qm_for_colorbar is not None:
+        cbar_ax.set_visible(True)
+        cbar = fig.colorbar(
+            qm_for_colorbar,
+            cax=cbar_ax,
+            orientation='horizontal',
+        )
+        cbar.set_label('Magnitude in dB')
     plt.tight_layout()
+    if cbar is not None:
+        cbar_pos = cbar_ax.get_position()
+        cbar_width_scale = 0.55
+        cbar_left = cbar_pos.x0 + 0.5 * cbar_pos.width * (1 - cbar_width_scale)
+        cbar_ax.set_position([
+            cbar_left,
+            cbar_pos.y0,
+            cbar_pos.width * cbar_width_scale,
+            cbar_pos.height,
+        ])
+    if output_file is not None:
+        os.makedirs(os.path.dirname(os.path.abspath(output_file)),
+                    exist_ok=True)
+        fig.savefig(output_file, dpi=300, bbox_inches='tight')
     plt.show()
 
 
@@ -257,8 +325,47 @@ def plot_single_spectral_difference(ho1: HeadOrientations,
                                     plane: str = 'horizontal',
                                     ear: str = 'left',
                                     db_threshold: float | None = None,
-                                    limits: Sequence[float] | None = None):
-    """"""
+                                    limits: Sequence[float] | None = None,
+                                    ax=None,
+                                    colorbar: bool = True,
+                                    show: bool = True):
+    """Plot a single spectral-difference map and return plot handles.
+
+    Parameters
+    ----------
+    ho1 : HeadOrientations
+        First head-orientation object.
+    ho2 : HeadOrientations, optional
+        Second head-orientation object. If provided, the spectral
+        difference ``ho1 - ho2`` is plotted. If ``None``, the HRTF magnitude
+        of ``ho1`` is plotted.
+    plane : str, optional
+        Plane for source selection: ``'median'``, ``'frontal'``, or
+        ``'horizontal'``.
+    ear : str, optional
+        Ear to plot: ``'left'`` or ``'right'``.
+    db_threshold : float or None, optional
+        Threshold in dB. Values within ``[-db_threshold, db_threshold]`` are
+        set to 0 dB.
+    limits : Sequence[float] or None, optional
+        Color limits ``(vmin, vmax)``.
+    ax : matplotlib.axes.Axes or None, optional
+        Axes to plot into. If ``None``, pyfar creates a new axes.
+    colorbar : bool, optional
+        If ``True`` (default), draw a colorbar for this plot.
+    show : bool, optional
+        If ``True`` (default), calls ``plt.show()``. Set to ``False`` to
+        modify labels/titles before displaying.
+
+    Returns
+    -------
+    tuple
+        ``(fig, ax, qm, cbar)`` where:
+        - ``fig`` is the Matplotlib figure.
+        - ``ax`` is the main plotting axes.
+        - ``qm`` is the QuadMesh returned by ``pf.plot.freq_2d``.
+        - ``cbar`` is the colorbar object (or ``None``).
+    """
 
     if ear == 'left':
         ear_id = 0
@@ -326,19 +433,36 @@ def plot_single_spectral_difference(ho1: HeadOrientations,
     else:
         data = hrirs1[0, ...]
 
-    ax = pf.plot.freq_2d(
-            data[:, ear_id].flatten(),
-            indices=np.rad2deg(angles),
-            orientation='horizontal',
-            cmap=cmap,
-            vmin=vmin,
-            vmax=vmax,
-        )[0]
+    plot_result = pf.plot.freq_2d(
+        data[:, ear_id].flatten(),
+        ax=ax,
+        indices=np.rad2deg(angles),
+        orientation='horizontal',
+        cmap=cmap,
+        vmin=vmin,
+        vmax=vmax,
+        colorbar=colorbar,
+    )
+
+    # pyfar can return the main axes wrapped in a tuple/list alongside the
+    # colorbar axes, depending on usage/context. Normalize to a single axes
+    # object.
+    ax_out, qm, cbar = plot_result
+    if isinstance(ax_out, (tuple, list)):
+        axis = ax_out[0]
+    else:
+        axis = ax_out
 
     b, e, a = ho1.head_orientations[0]
-    ax[0].set_ylabel('angle in degree')
-    ax[0].set_title(f"bend: {b}; elev: {e}, azimuth: {a}")
-    plt.show()
+    axis.set_ylabel('angle in degree')
+    axis.set_title(f"bend: {b}; elev: {e}, azimuth: {a}")
+
+    fig = axis.figure
+
+    if show:
+        plt.show()
+
+    return fig, axis, qm, cbar
 
 
 def plot_mean_spectral_difference(head_orientation: HeadOrientations,
@@ -721,7 +845,8 @@ def plot_localization_map_subplots(
         rom_fill: Sequence = None,
         rom_fill_rotation: Union[float, Sequence] = None,
         cols: int = 4,
-        figsize: Sequence = None):
+        figsize: Sequence = None,
+        annotate_min_max: bool = False):
     """
     Plot localization metric as Voronoi cell maps in a grid of subplots,
     one subplot per rotation value.
@@ -749,6 +874,9 @@ def plot_localization_map_subplots(
         Number of columns in the subplot grid. Default is 4.
     figsize : Sequence, optional
         Figure size as (width, height). If None, auto-calculated based on grid size.
+    annotate_min_max : bool, optional
+        If ``True``, add a text annotation with global min/max values in the
+        3rd-row/3rd-column field when that slot exists and is unused.
     """
     from scipy.spatial import Voronoi
     from matplotlib.patches import Polygon
@@ -801,7 +929,12 @@ def plot_localization_map_subplots(
     # First pass: collect data for all rotations
     for rotation_ in rotation:
         azi = metrics.head_orientations[:, 2]
-        mask = (azi == rotation_)
+        mask = np.isclose(azi, rotation_, atol=1e-8)
+
+        if not np.any(mask):
+            raise ValueError(
+                f"No head orientations found for rotation={rotation_}."
+            )
 
         lateral_bend = metrics.head_orientations[mask, 0]
         flexex = metrics.head_orientations[mask, 1]
@@ -826,10 +959,14 @@ def plot_localization_map_subplots(
             'vertices': vertices,
         })
 
-    # Determine global color limits
+    # Keep raw data extrema for annotation, independent from display clipping.
+    data_min = np.nanmin(all_colors)
+    data_max = np.nanmax(all_colors)
+
+    # Determine global color limits (used for colormap clipping/display).
     if limits is None:
-        vmin = np.nanmin(all_colors)
-        vmax = np.nanmax(all_colors)
+        vmin = data_min
+        vmax = data_max
     else:
         vmin, vmax = limits
 
@@ -895,12 +1032,58 @@ def plot_localization_map_subplots(
         ax.set_aspect('equal', adjustable='box')
         ax.grid(True, alpha=0.2)
 
-    # Add colorbar to the right of the figure
-    cbar_ax = fig.add_axes([0.92, 0.15, 0.02, 0.7])
-    cbar = fig.colorbar(
-        plt.cm.ScalarMappable(norm=norm, cmap=cmap_obj),
-        cax=cbar_ax
-    )
+    # Add min/max annotation in the 3rd-row/3rd-column field if that slot is
+    # part of the grid and not occupied by a data subplot.
+    ann_row = 2
+    ann_col = 2
+    ann_idx = ann_row * cols + ann_col
+    if (
+        annotate_min_max
+        and rows >= 3
+        and cols >= 3
+        and ann_idx < rows * cols
+        and ann_idx >= n_plots
+    ):
+        ann_ax = fig.add_subplot(gs[ann_row, ann_col])
+        ann_ax.axis('off')
+        ann_ax.text(
+            0.5,
+            .9,
+            f"min: {data_min:.2f}\nmax: {data_max:.2f}",
+            ha='center',
+            va='center',
+            fontsize=14,
+            fontweight='bold',
+            bbox=dict(boxstyle='round,pad=0.55', facecolor='white', alpha=0.9)
+        )
+
+    # Prefer placing the colorbar in unused subplot slots (e.g. last-row
+    # whitespace). Fall back to a right-side colorbar when no slots are free.
+    n_slots = rows * cols
+    n_empty = n_slots - n_plots
+
+    if n_empty > 0:
+        first_empty_idx = n_plots
+        empty_row = first_empty_idx // cols
+        empty_col = first_empty_idx % cols
+
+        # Span all remaining empty columns in that row.
+        cbar_host_ax = fig.add_subplot(gs[empty_row, empty_col:cols])
+        cbar_host_ax.axis('off')
+        cbar_ax = cbar_host_ax.inset_axes([0.08, 0.45, 0.84, 0.18])
+
+        cbar = fig.colorbar(
+            plt.cm.ScalarMappable(norm=norm, cmap=cmap_obj),
+            cax=cbar_ax,
+            orientation='horizontal'
+        )
+    else:
+        cbar_ax = fig.add_axes([0.92, 0.15, 0.02, 0.7])
+        cbar = fig.colorbar(
+            plt.cm.ScalarMappable(norm=norm, cmap=cmap_obj),
+            cax=cbar_ax
+        )
+
     cbar.set_label(metric, fontsize=10)
 
     plt.show()
@@ -1132,7 +1315,8 @@ def plot_coloration_map_subplots(
         cols: int = 4,
         figsize: Sequence = None,
         aggregate: str = 'mean',
-        annotate: Sequence = None):
+        annotate: Sequence = None,
+        output_file: str = None):
     """
     Plot coloration metric (pbc aggregated across source positions) as Voronoi cell
     maps in a grid of subplots, one subplot per rotation value.
@@ -1164,6 +1348,8 @@ def plot_coloration_map_subplots(
         orientations. Supported values: ``'median'``, ``'mean'``,
         ``'max_lower_95'`` (max of lower 5th percentile per orientation),
         ``'min_upper_95'`` (min of upper 95th percentile per orientation).
+    output_file : str, optional
+        If provided, save the figure to this path before displaying it.
     """
     from scipy.spatial import Voronoi
     from matplotlib.patches import Polygon
@@ -1301,13 +1487,36 @@ def plot_coloration_map_subplots(
         ax.grid(True, alpha=0.2)
         _add_coloration_annotations(ax, pbc, colors_all, annotate)
 
-    # Add colorbar to the right of the figure
-    cbar_ax = fig.add_axes([0.92, 0.15, 0.02, 0.7])
-    cbar = fig.colorbar(
-        plt.cm.ScalarMappable(norm=norm, cmap=cmap_obj),
-        cax=cbar_ax
-    )
+    # Prefer placing the colorbar in unused subplot slots (e.g. last-row
+    # whitespace). Fall back to a right-side colorbar when no slots are free.
+    n_slots = rows * cols
+    n_empty = n_slots - n_plots
+
+    if n_empty > 0:
+        first_empty_idx = n_plots
+        empty_row = first_empty_idx // cols
+        empty_col = first_empty_idx % cols
+
+        # Span all remaining empty columns in that row.
+        cbar_host_ax = fig.add_subplot(gs[empty_row, empty_col:cols])
+        cbar_host_ax.axis('off')
+        cbar_ax = cbar_host_ax.inset_axes([0.08, 0.45, 0.84, 0.18])
+
+        cbar = fig.colorbar(
+            plt.cm.ScalarMappable(norm=norm, cmap=cmap_obj),
+            cax=cbar_ax,
+            orientation='horizontal'
+        )
+    else:
+        cbar_ax = fig.add_axes([0.92, 0.15, 0.02, 0.7])
+        cbar = fig.colorbar(
+            plt.cm.ScalarMappable(norm=norm, cmap=cmap_obj),
+            cax=cbar_ax
+        )
+
     cbar.set_label('Coloration (PBC)', fontsize=10)
 
-    plt.show()
+    if output_file is not None:
+        fig.savefig(output_file, dpi=300, bbox_inches='tight')
 
+    plt.show()

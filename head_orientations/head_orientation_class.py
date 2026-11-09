@@ -155,6 +155,7 @@ class HeadOrientationsDataset:
             azimuth=azimuth,
             tol=tol,
         )
+        print("Loading head orientation data...")
         for n, idx in enumerate(indices):
             if n == 0:
                 hrirs, source, _ = pf.io.read_sofa(self.sofa_files[idx])
